@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Coach — Schede Allenamento</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .coach-wrap { max-width: 640px; margin: 0 auto; }
+    .coach-login { background: var(--grigio); border: 1px solid var(--bordo); border-radius: 12px; padding: 20px; }
+    .coach-login input { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid var(--bordo); border-radius: 8px; margin: 8px 0; }
+    .coach-btn { background: var(--blu); color: #fff; border: none; padding: 12px 18px; border-radius: 8px; font-size: 1rem; font-weight: 700; cursor: pointer; }
+    .coach-btn.ghost { background: transparent; color: var(--blu); border: 1px solid var(--blu); }
+    .coach-btn:disabled { opacity: .5; }
+    .coach-sez { background: #fff; border: 1px solid var(--bordo); border-radius: 12px; padding: 16px; margin: 12px 0; }
+    .coach-sez h2 { font-size: 1rem; margin: 0 0 10px; }
+    .coach-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    .coach-table th, .coach-table td { border: 1px solid var(--bordo); padding: 6px 8px; text-align: left; }
+    .coach-table th { background: #eaf0fb; }
+    .coach-toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+    .coach-toolbar select, .coach-toolbar button { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--bordo); font-size: .9rem; }
+    .coach-textarea { width: 100%; min-height: 240px; font-family: Consolas, monospace; font-size: .8rem; padding: 10px; border: 1px solid var(--bordo); border-radius: 8px; }
+    .coach-msg { margin-top: 8px; font-size: .85rem; }
+    .coach-msg.ok { color: var(--verde); }
+    .coach-msg.err { color: #c33; }
+  </style>
+</head>
+<body>
+<header>
+  <div class="header-brand">
+    <img src="icon.svg" class="site-logo" alt="Logo squadra">
+    <h1>Area Coach</h1>
+  </div>
+</header>
+
+<div class="container coach-wrap">
+  <a class="back-link" href="index.html">← Squadra</a>
+
+  <div id="login-view" class="coach-login">
+    <h2>Accesso coach</h2>
+    <input type="password" id="chiave-input" placeholder="Chiave coach" autocomplete="off">
+    <button class="coach-btn" id="login-btn" onclick="login()">Entra</button>
+    <div class="coach-msg" id="login-msg"></div>
+  </div>
+
+  <div id="main-view" style="display:none">
+
+    <div class="coach-sez">
+      <h2>Atlete</h2>
+      <div id="atlete-view"><p class="loading-msg">Caricamento…</p></div>
+    </div>
+
+    <div class="coach-sez">
+      <h2>Progressi (log atlete)</h2>
+      <div class="coach-toolbar">
+        <select id="atleta-select" onchange="caricaProgressi()"></select>
+        <button class="coach-btn ghost" onclick="caricaProgressi()">Aggiorna</button>
+      </div>
+      <div id="progressi-view"><p class="loading-msg">Seleziona un'atleta</p></div>
+    </div>
+
+    <div class="coach-sez">
+      <h2>Dati (JSON su Drive)</h2>
+      <div class="coach-toolbar">
+        <select id="collezione-select">
+          <option value="Giocatrici">giocatrici.json</option>
+          <option value="Sedute">sedute.json</option>
+          <option value="Esercizi">esercizi.json</option>
+          <option value="LibreriaIndividuale">libreria_individuale.json</option>
+          <option value="Info">info.json</option>
+        </select>
+        <button class="coach-btn ghost" onclick="caricaCollezione()">Carica</button>
+        <button class="coach-btn" onclick="salvaCollezione()">Salva</button>
+        <button class="coach-btn ghost" onclick="inizializzaDati()">Crea dati di esempio</button>
+      </div>
+      <textarea class="coach-textarea" id="json-editor" spellcheck="false" placeholder='Carica una collezione per modificarla…'></textarea>
+      <div class="coach-msg" id="json-msg"></div>
+    </div>
+
+    <button class="coach-btn ghost" onclick="logout()">Esci</button>
+  </div>
+</div>
+
+<script>
+/* ---------- configurazione ---------- */
+const IS_DEV = window.location.pathname.includes('/dev/');
+const API   = IS_DEV
+  ? 'https://script.google.com/macros/s/AKfycbxvILKHvT01CCNRqaLzea-V2pm5lC3yNKJxUjFG9I28PYB52mAejeWgZZufXJYBi5OflA/exec'
+  : 'https://script.google.com/macros/s/AKfycbxvILKHvT01CCNRqaLzea-V2pm5lC3yNKJxUjFG9I28PYB52mAejeWgZZufXJYBi5OflA/exec';
+const TOKEN = 'tk-e9fe32f6fc35456a';
+
+let COACH_KEY = null;
+
+function msg(el, testo, ok) {
+  el.textContent = testo;
+  el.className = 'coach-msg ' + (ok ? 'ok' : 'err');
+}
+
+async function login() {
+  const chiave = document.getElementById('chiave-input').value.trim();
+  const el = document.getElementById('login-msg');
+  if (!chiave) { msg(el, 'Inserisci la chiave.', false); return; }
+  try {
+    const r = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ token: TOKEN, azione: 'verifica_coach', chiave })
+    });
+    const json = await r.json();
+    if (!json.ok) { msg(el, json.errore || 'Chiave non valida', false); return; }
+    COACH_KEY = chiave;
+    sessionStorage.setItem('coachKey', chiave);
+    document.getElementById('login-view').style.display = 'none';
+    document.getElementById('main-view').style.display = '';
+    caricaAtlete();
+    caricaCollezione();
+  } catch (e) {
+    msg(el, 'Errore di rete. Riprova.', false);
+  }
+}
+
+function logout() {
+  COACH_KEY = null;
+  sessionStorage.removeItem('coachKey');
+  location.reload();
+}
+
+async function get(foglio) {
+  const r = await fetch(`${API}?token=${TOKEN}&azione=leggi&foglio=${foglio}`);
+  return r.json();
+}
+
+async function caricaAtlete() {
+  const v = document.getElementById('atlete-view');
+  try {
+    const json = await get('Giocatrici');
+    if (!json.ok) throw new Error(json.errore);
+    const atlete = (json.dati || []).filter(g => String(g.ID) !== '99');
+    const sel = document.getElementById('atleta-select');
+    sel.innerHTML = atlete.map(a => `<option value="${a.ID}">${a.Nome} (ID ${a.ID})</option>`).join('');
+    v.innerHTML = `<table class="coach-table">
+      <tr><th>ID</th><th>Nome</th><th>Ruolo</th><th>Attiva</th><th>Lingua</th></tr>
+      ${atlete.map(a => `<tr><td>${a.ID}</td><td>${a.Nome}</td><td>${a.Ruolo || ''}</td><td>${a.Attiva || 'SI'}</td><td>${a.Lingua || 'IT'}</td></tr>`).join('')}
+    </table>`;
+    caricaProgressi();
+  } catch (e) {
+    v.innerHTML = `<p class="errore-msg">Errore nel caricamento.</p>`;
+  }
+}
+
+async function caricaProgressi() {
+  const v = document.getElementById('progressi-view');
+  const idAtleta = document.getElementById('atleta-select').value;
+  if (!idAtleta) { v.innerHTML = '<p class="loading-msg">Seleziona un\'atleta</p>'; return; }
+  try {
+    const json = await get('Progressi');
+    if (!json.ok) throw new Error(json.errore);
+    const log = (json.dati || [])
+      .filter(p => String(p.ID_Giocatrice) === String(idAtleta))
+      .sort((a, b) => new Date(a.Timestamp) - new Date(b.Timestamp));
+    if (!log.length) { v.innerHTML = '<p class="loading-msg">Nessun log registrato.</p>'; return; }
+    v.innerHTML = `<table class="coach-table">
+      <tr><th>Data</th><th>Seduta</th><th>Esercizio</th><th>Valore</th><th>RM</th></tr>
+      ${log.map(p => `<tr><td>${p.Data || ''}</td><td>${p.N_Seduta || ''}</td><td>${p.Esercizio}</td><td>${p.Valore || ''}</td><td>${p.RM_Stimato ? '~' + p.RM_Stimato + ' kg' : ''}</td></tr>`).join('')}
+    </table>`;
+  } catch (e) {
+    v.innerHTML = `<p class="errore-msg">Errore nel caricamento.</p>`;
+  }
+}
+
+async function caricaCollezione() {
+  const foglio = document.getElementById('collezione-select').value;
+  const el = document.getElementById('json-msg');
+  try {
+    const json = await get(foglio);
+    if (!json.ok) throw new Error(json.errore);
+    document.getElementById('json-editor').value = JSON.stringify(json.dati || [], null, 2);
+    msg(el, `Caricato: ${(json.dati || []).length} righe.`, true);
+  } catch (e) {
+    msg(el, 'Errore nel caricamento: ' + e.message, false);
+  }
+}
+
+async function salvaCollezione() {
+  const foglio = document.getElementById('collezione-select').value;
+  const el = document.getElementById('json-msg');
+  let dati;
+  try {
+    dati = JSON.parse(document.getElementById('json-editor').value);
+  } catch (e) {
+    msg(el, 'JSON non valido: ' + e.message, false);
+    return;
+  }
+  if (!Array.isArray(dati)) { msg(el, 'Il contenuto deve essere un array [ … ]', false); return; }
+  try {
+    const r = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ token: TOKEN, chiave: COACH_KEY, azione: 'scrivi_foglio', foglio, dati })
+    });
+    const json = await r.json();
+    if (!json.ok) { msg(el, json.errore || 'Errore', false); return; }
+    msg(el, `Salvato: ${json.scritte} righe.`, true);
+    caricaAtlete();
+  } catch (e) {
+    msg(el, 'Errore di rete: ' + e.message, false);
+  }
+}
+
+async function inizializzaDati() {
+  const el = document.getElementById('json-msg');
+  if (!confirm('Creare i file di esempio su Drive? I file ESISTENTI non verranno toccati.')) return;
+  try {
+    const r = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ token: TOKEN, chiave: COACH_KEY, azione: 'inizializza_dati' })
+    });
+    const json = await r.json();
+    if (!json.ok) { msg(el, json.errore || 'Errore', false); return; }
+    const creati    = (json.creati || []).join(', ') || 'nessuno';
+    const esistenti = (json.esistenti || []).join(', ') || 'nessuno';
+    msg(el, 'Creati: ' + creati + ' · Già esistenti (non toccati): ' + esistenti, true);
+    caricaAtlete();
+    caricaCollezione();
+  } catch (e) {
+    msg(el, 'Errore di rete: ' + e.message, false);
+  }
+}
+
+/* ripristino sessione */
+(function () {
+  const k = sessionStorage.getItem('coachKey');
+  if (k) {
+    COACH_KEY = k;
+    document.getElementById('login-view').style.display = 'none';
+    document.getElementById('main-view').style.display = '';
+    caricaAtlete();
+    caricaCollezione();
+  }
+})();
+</script>
+</body>
+</html>
