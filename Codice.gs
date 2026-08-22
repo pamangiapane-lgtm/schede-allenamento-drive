@@ -86,6 +86,10 @@ function doPost(e) {
       if (body.chiave !== COACH_KEY) return errore('Chiave coach non valida');
       return inizializzaDati();
     }
+    if (az === 'crea_file') {
+      if (body.chiave !== COACH_KEY) return errore('Chiave coach non valida');
+      return creaFile(body);
+    }
     if (az === 'importa_sheet') {
       if (body.chiave !== COACH_KEY) return errore('Chiave coach non valida');
       return importaSheet(body.file);
@@ -293,6 +297,22 @@ function scriviFoglio(body) {
   const dati = Array.isArray(body.dati) ? body.dati : [];
   scriviFile(file, dati);
   return risposta({ ok: true, scritte: dati.length });
+}
+
+/* Crea o aggiorna un file di testo dentro FOLDER_ID (solo coach).
+   Vincolo: tocca esclusivamente la cartella configurata. */
+function creaFile(body) {
+  const nome = String(body.nome || '').trim();
+  if (!nome) return errore('Nome file mancante');
+  if (/[\\/:*?"<>|]/.test(nome)) return errore('Nome file non valido');
+  const contenuto = String(body.contenuto || '');
+  const folder = DriveApp.getFolderById(FOLDER_ID);
+  const files  = folder.getFilesByName(nome);
+  const file   = files.hasNext()
+    ? files.next()
+    : folder.createFile(nome, contenuto, MimeType.PLAIN_TEXT);
+  file.setContent(contenuto);
+  return risposta({ ok: true, nome: nome, url: file.getUrl() });
 }
 
 /* ============================================================
