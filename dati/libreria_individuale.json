@@ -1,0 +1,4 @@
+[
+  { "Codice": "PREHAB-F1", "Titolo_Colonna": "Fase 1 — Stabilità", "Ordine": 1, "Esercizio": "Rotazione esterna", "Esercizio_EN": "External rotation", "Serie": "3", "Reps": "12", "Intensita": "", "Recupero": "45s", "Log_Libero": "NO", "Catena": "upper", "Note": "", "Istruzione": "", "VideoURL": "" },
+  { "Codice": "PREHAB-F1", "Titolo_Colonna": "Fase 1 — Stabilità", "Ordine": 2, "Esercizio": "Plank laterale", "Esercizio_EN": "Side plank", "Serie": "3", "Reps": "30s", "Intensita": "", "Recupero": "30s", "Log_Libero": "NO", "Catena": "core", "Note": "", "Istruzione": "", "VideoURL": "" }
+]
