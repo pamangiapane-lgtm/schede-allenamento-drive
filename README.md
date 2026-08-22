@@ -11,7 +11,10 @@ app/
 ├── index.html          # lista atlete
 ├── scheda.html         # scheda personale atleta (sedute, log, 1RM, prehab, profilo)
 ├── coach.html          # area coach (protetta da chiave) + seed dati di esempio
+├── dashboard.html      # dashboard coach: stato atlete, ultimi log, RPE (chiave coach)
+├── seduta-coach.html   # vista seduta live: piano, timer recupero, log rapido (chiave coach)
 ├── report.html         # report progressi per atleta
+├── dati.js             # modulo condiviso: API + cache offline + coda log
 ├── style.css           # design system
 ├── sw.js               # service worker (percorsi RELATIVI)
 ├── manifest.json       # manifest PWA
@@ -19,8 +22,18 @@ app/
 ├── Codice.gs           # backend Apps Script (con placeholder — sicuro da committare)
 ├── Codice.PROD.gs      # ⚠️ SOLO per il deploy: contiene i valori reali. NON committare.
 ├── dati/               # file JSON di esempio (alternativa al seed automatico)
+├── tools/              # importa-progressi.ps1 (import storico progressi, append-only)
 └── .github/workflows/pages.yml   # deploy automatico su GitHub Pages
 ```
+
+## Modalità offline (palestra)
+
+- Ogni collezione letta con successo finisce nella cache locale (`localStorage`).
+  Senza rete, atlete e coach vedono gli **ultimi dati caricati** + banner "Offline".
+- I log salvati senza rete vanno in **coda locale** e vengono **sincronizzati
+  automaticamente** appena torna la connessione (evento `online`). Nessun log perso.
+- Consiglio: aprire l'app una volta con rete attiva (anche solo la lista atlete) prima
+  di andare in palestra, così la cache è piena.
 
 ## Setup in 3 passi
 
