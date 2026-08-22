@@ -1,0 +1,5 @@
+[
+  { "ID": 1, "Nome": "Rossi Maria", "Ruolo": "Centrale", "Attiva": "SI", "Lingua": "IT", "Fase_Prehab": "F1", "Colonne_Individuali": "PREHAB-F1,PREHAB-F2", "Obiettivi_Prehab": "{\"F1\":\"Stabilità spalla\",\"F2\":\"Forza caviglia\"}", "Link_Prehab": "", "Analisi_Funzionale": "", "Strategia": "" },
+  { "ID": 2, "Nome": "Bianchi Giulia", "Ruolo": "Palleggiatrice", "Attiva": "SI", "Lingua": "IT", "Fase_Prehab": "F1", "Colonne_Individuali": "PREHAB-F1", "Obiettivi_Prehab": "{\"F1\":\"Mobilità spalla\"}", "Link_Prehab": "", "Analisi_Funzionale": "", "Strategia": "" },
+  { "ID": 99, "Nome": "Demo", "Ruolo": "Coach", "Attiva": "SI", "Lingua": "IT" }
+]
