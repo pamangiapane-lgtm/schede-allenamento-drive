@@ -28,7 +28,7 @@ jobs:
       - name: Prepara cartella pubblicazione
         run: |
           mkdir -p site
-          cp index.html scheda.html coach.html report.html style.css sw.js manifest.json icon.svg site/
+          cp index.html scheda.html coach.html report.html dashboard.html seduta-coach.html dati.js style.css sw.js manifest.json icon.svg site/
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
