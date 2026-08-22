@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Report — Schede Allenamento</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .report-wrap { max-width: 640px; margin: 0 auto; }
+    .report-sez { background: #fff; border: 1px solid var(--bordo); border-radius: 12px; padding: 16px; margin: 12px 0; }
+    .report-sez h2 { font-size: 1rem; margin: 0 0 10px; }
+    .report-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    .report-table th, .report-table td { border: 1px solid var(--bordo); padding: 6px 8px; text-align: left; }
+    .report-table th { background: #eaf0fb; }
+    .report-toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+    .report-toolbar select { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--bordo); font-size: .9rem; }
+    .report-chip { display: inline-block; background: #eaf0fb; color: var(--blu); border-radius: 6px; padding: 2px 8px; margin: 2px; font-size: .8rem; }
+  </style>
+</head>
+<body>
+<header>
+  <div class="header-brand">
+    <img src="icon.svg" class="site-logo" alt="Logo squadra">
+    <h1>Report</h1>
+  </div>
+</header>
+
+<div class="container report-wrap">
+  <a class="back-link" href="index.html">← Squadra</a>
+
+  <div class="report-toolbar">
+    <select id="atleta-select" onchange="render()"><option value="">Seleziona atleta…</option></select>
+  </div>
+
+  <div id="report-view"><p class="loading-msg">Seleziona un'atleta per vedere il report.</p></div>
+</div>
+
+<script>
+/* ---------- configurazione ---------- */
+const IS_DEV = window.location.pathname.includes('/dev/');
+const API   = IS_DEV
+  ? 'https://script.google.com/macros/s/AKfycbxvILKHvT01CCNRqaLzea-V2pm5lC3yNKJxUjFG9I28PYB52mAejeWgZZufXJYBi5OflA/exec'
+  : 'https://script.google.com/macros/s/AKfycbxvILKHvT01CCNRqaLzea-V2pm5lC3yNKJxUjFG9I28PYB52mAejeWgZZufXJYBi5OflA/exec';
+const TOKEN = 'tk-e9fe32f6fc35456a';
+
+async function get(foglio) {
+  const r = await fetch(`${API}?token=${TOKEN}&azione=leggi&foglio=${foglio}`);
+  return r.json();
+}
+
+async function init() {
+  try {
+    const json = await get('Giocatrici');
+    if (!json.ok) throw new Error(json.errore);
+    const atlete = (json.dati || []).filter(g => String(g.ID) !== '99');
+    const sel = document.getElementById('atleta-select');
+    sel.innerHTML = '<option value="">Seleziona atleta…</option>' +
+      atlete.map(a => `<option value="${a.ID}">${a.Nome}</option>`).join('');
+    const idParam = new URLSearchParams(window.location.search).get('id');
+    if (idParam) { sel.value = idParam; render(); }
+  } catch (e) {
+    document.getElementById('report-view').innerHTML = '<p class="errore-msg">Errore nel caricamento.</p>';
+  }
+}
+
+async function render() {
+  const idAtleta = document.getElementById('atleta-select').value;
+  const v = document.getElementById('report-view');
+  if (!idAtleta) { v.innerHTML = '<p class="loading-msg">Seleziona un\'atleta per vedere il report.</p>'; return; }
+
+  try {
+    const [gRes, pRes] = await Promise.all([get('Giocatrici'), get('Progressi')]);
+    if (!gRes.ok || !pRes.ok) throw new Error('Errore API');
+    const atleta = (gRes.dati || []).find(a => String(a.ID) === String(idAtleta));
+    const log = (pRes.dati || [])
+      .filter(p => String(p.ID_Giocatrice) === String(idAtleta))
+      .sort((a, b) => new Date(a.Timestamp) - new Date(b.Timestamp));
+
+    const nome = atleta ? atleta.Nome : ('ID ' + idAtleta);
+    v.innerHTML = `<div class="report-sez"><h2>${nome}${atleta && atleta.Ruolo ? ' — ' + atleta.Ruolo : ''}</h2></div>`;
+
+    const SKIP = new Set(['Peso-corporeo', 'RPE-seduta', 'Fatica-seduta']);
+
+    /* raggruppa per seduta */
+    const perSeduta = {};
+    log.forEach(p => {
+      const s = p.N_Seduta || '—';
+      if (!perSeduta[s]) perSeduta[s] = [];
+      perSeduta[s].push(p);
+    });
+
+    Object.entries(perSeduta).forEach(([sed, voci]) => {
+      const eser = {};
+      voci.forEach(p => {
+        if (!eser[p.Esercizio]) eser[p.Esercizio] = [];
+        eser[p.Esercizio].push(p);
+      });
+      let html = `<div class="report-sez"><h2>${sed}</h2>`;
+      Object.entries(eser).forEach(([nome, righe]) => {
+        const chips = righe.map(p =>
+          `<span class="report-chip">${p.Data || ''} · <strong>${p.Valore || ''}</strong>${p.RM_Stimato ? ' · RM ~' + p.RM_Stimato : ''}</span>`
+        ).join('');
+        html += `<div style="margin:6px 0"><strong>${nome}</strong><br>${chips}</div>`;
+      });
+      html += `</div>`;
+      v.innerHTML += html;
+    });
+
+    if (!Object.keys(perSeduta).length) {
+      v.innerHTML += '<p class="loading-msg">Nessun log registrato per questa atleta.</p>';
+    }
+  } catch (e) {
+    v.innerHTML = '<p class="errore-msg">Errore nel caricamento del report.</p>';
+  }
+}
+
+init();
+</script>
+</body>
+</html>
