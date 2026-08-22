@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Squadra — Schede Allenamento</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1a3a6b">
+  <link rel="apple-touch-icon" href="icon.svg">
+</head>
+<body>
+
+<header>
+  <div class="header-brand">
+    <img src="icon.svg" class="site-logo" alt="Logo squadra">
+    <h1>Schede Allenamento</h1>
+  </div>
+  <p>Tocca il tuo nome per accedere</p>
+  <div id="dev-banner" style="display:none;background:#e8a000;color:#fff;font-size:0.75rem;font-weight:700;letter-spacing:1px;padding:3px 0;margin-top:6px;">⚠ AMBIENTE DI TEST — NON UFFICIALE</div>
+</header>
+
+<div class="container">
+  <p class="squadra-titolo">Giocatrici</p>
+  <div id="lista-giocatrici">
+    <p class="loading-msg">Caricamento…</p>
+  </div>
+  <div id="install-banner" class="install-banner" style="display:none">
+    <hr class="install-divider">
+    <div class="install-card">
+      <div class="install-icon">📲</div>
+      <p class="install-title">Installa l'app</p>
+      <p class="install-sub">Accesso rapido dalla schermata Home del tuo telefono</p>
+      <button id="install-btn">Aggiungi alla schermata Home</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------- configurazione ---------- */
+const IS_DEV = window.location.pathname.includes('/dev/');
+const API   = IS_DEV
+  ? 'https://script.google.com/macros/s/AKfycbxvILKHvT01CCNRqaLzea-V2pm5lC3yNKJxUjFG9I28PYB52mAejeWgZZufXJYBi5OflA/exec'
+  : 'https://script.google.com/macros/s/AKfycbxvILKHvT01CCNRqaLzea-V2pm5lC3yNKJxUjFG9I28PYB52mAejeWgZZufXJYBi5OflA/exec';
+const TOKEN = 'tk-e9fe32f6fc35456a';
+
+if (IS_DEV) {
+  document.title = '[DEV] Squadra — Schede Allenamento';
+  document.getElementById('dev-banner').style.display = '';
+}
+
+/* ---------- caricamento atlete ---------- */
+async function caricaGiocatrici() {
+  const lista = document.getElementById('lista-giocatrici');
+  try {
+    const res  = await fetch(`${API}?token=${TOKEN}&azione=leggi&foglio=Giocatrici`);
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.errore);
+
+    const dati   = json.dati || [];
+    const reali  = dati.filter(g => !isNaN(parseInt(g.ID)) && String(g.ID) !== '99' && g.Attiva !== 'NO')
+                        .sort((a, b) => String(a.Nome).localeCompare(String(b.Nome), 'it', { sensitivity: 'base' }));
+    const demo   = dati.find(g => String(g.ID) === '99');
+
+    lista.innerHTML = '';
+    reali.forEach(g => lista.appendChild(cardGiocatrice(g, false)));
+    if (demo) lista.appendChild(cardGiocatrice(demo, true));
+  } catch (err) {
+    lista.innerHTML = `<p class="errore-msg">Errore nel caricamento dati. Riprova.</p>`;
+  }
+}
+
+function cardGiocatrice(g, isDemo) {
+  const div = document.createElement('div');
+  div.className = 'giocatrice-card' + (isDemo ? ' giocatrice-demo' : '');
+  const nome = isDemo ? 'Demo App' : g.Nome;
+  const sub  = isDemo ? 'Accesso demo — solo coach' : (g.Ruolo || '');
+  div.innerHTML = `
+    <div class="giocatrice-info">
+      <strong>${nome}</strong>
+      ${sub ? `<span>${sub}</span>` : ''}
+    </div>
+    <span class="arrow">›</span>
+  `;
+  div.onclick = () => { window.location.href = `scheda.html?id=${g.ID}`; };
+  return div;
+}
+
+caricaGiocatrici();
+
+/* ---------- PWA ---------- */
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js');
+}
+
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  document.getElementById('install-banner').style.display = 'flex';
+});
+
+document.getElementById('install-btn').addEventListener('click', async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  document.getElementById('install-banner').style.display = 'none';
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredPrompt = null;
+  document.getElementById('install-banner').style.display = 'none';
+});
+</script>
+
+</body>
+</html>
