@@ -18,6 +18,8 @@
   </div>
 </header>
 
+<div id="offline-banner" class="offline-banner" style="display:none"></div>
+
 <div class="container">
 
   <a class="back-link" href="index.html">← Tutte le giocatrici</a>
@@ -50,12 +52,8 @@
 
 </div><!-- fine container -->
 
+<script src="dati.js"></script>
 <script>
-const IS_DEV = window.location.pathname.includes('/dev/');
-const API   = IS_DEV
-  ? 'https://script.google.com/macros/s/AKfycbxvILKHvT01CCNRqaLzea-V2pm5lC3yNKJxUjFG9I28PYB52mAejeWgZZufXJYBi5OflA/exec'
-  : 'https://script.google.com/macros/s/AKfycbxvILKHvT01CCNRqaLzea-V2pm5lC3yNKJxUjFG9I28PYB52mAejeWgZZufXJYBi5OflA/exec';
-const TOKEN = 'tk-e9fe32f6fc35456a';
 const id    = new URLSearchParams(window.location.search).get('id');
 let ultimiLog   = {};
 let feedbackLog = {};
@@ -86,6 +84,9 @@ const IT = {
   prehabFreq:'5× / sett.',
   serie:'Serie', intensity:'Intensità', rest:'Recupero', rec:'rec',
   retry:'↺ Riprova',
+  queued:'In coda (offline) — si sincronizzerà',
+  codaReport: n=>`In coda — si sincronizzeranno (${n})`,
+  offlineTitle:'OFFLINE',
   notFound:'Giocatrice non trovata.', loadError:'Errore nel caricamento. Riprova.',
   months:['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'],
 };
@@ -114,6 +115,9 @@ const EN = {
   prehabFreq:'5× / week',
   serie:'Sets', intensity:'Intensity', rest:'Rest', rec:'Rest',
   retry:'↺ Retry',
+  queued:'Queued (offline) — will sync',
+  codaReport: n=>`Queued — will sync (${n})`,
+  offlineTitle:'OFFLINE',
   notFound:'Player not found.', loadError:'Loading error. Try again.',
   months:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
 };
@@ -417,23 +421,29 @@ function htmlIndividuale(e, sedSuffix) {
 }
 
 /* ---------- caricamento ---------- */
+/* lettura con cache offline: tenta rete (2 tentativi), poi cache locale */
 async function fetchSheet(foglio, tentativo = 0) {
-  const TIMEOUT = 28000;
-  const ctrl = new AbortController();
-  const tid = setTimeout(() => ctrl.abort(), TIMEOUT);
   try {
-    const r = await fetch(`${API}?token=${TOKEN}&azione=leggi&foglio=${foglio}`, { signal: ctrl.signal });
-    const text = await r.text();
-    clearTimeout(tid);
-    return JSON.parse(text);
+    const res = await getDati(foglio);
+    if (res.offline) mostraBannerCache(foglio);
+    return { dati: res.dati };
   } catch (err) {
-    clearTimeout(tid);
-    if (tentativo < 2) {
-      await new Promise(res => setTimeout(res, 1500 * (tentativo + 1)));
+    if (tentativo < 1) {
+      await new Promise(res => setTimeout(res, 1500));
       return fetchSheet(foglio, tentativo + 1);
     }
     throw err;
   }
+}
+
+/* marca la scheda come "dati in cache" (offline o server lento) */
+function mostraBannerCache(foglio) {
+  const el = document.getElementById('offline-banner');
+  if (!el || el.dataset.cacheMostrato) return;
+  el.dataset.cacheMostrato = '1';
+  el.textContent = '⚠ ' + L.offlineTitle + ' — dati dall\'ultimo aggiornamento locale';
+  el.style.display = 'block';
+  setTimeout(aggiornaBannerOffline, 4000);
 }
 
 async function caricaScheda() {
@@ -677,16 +687,11 @@ async function salvaLog(inputId, btn) {
   btn.disabled    = true;
 
   try {
-    await fetch(API, {
-      method:  'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({
-        token: TOKEN, azione: 'log_progressi',
-        id_giocatrice: id, n_seduta: nSeduta, esercizio: esercizio,
-        data: new Date().toLocaleDateString('it-IT'),
-        valore, note: '',
-        kg_usati: kg, reps_fatte: reps || '', rm_stimato: rm,
-      }),
+    const esito = await inviaLog({
+      id_giocatrice: id, n_seduta: nSeduta, esercizio: esercizio,
+      data: new Date().toLocaleDateString('it-IT'),
+      valore, note: '',
+      kg_usati: kg, reps_fatte: reps || '', rm_stimato: rm,
     });
 
     ultimiLog[esercizio] = { valore, rm };
@@ -701,8 +706,8 @@ async function salvaLog(inputId, btn) {
       row.prepend(div);
     }
 
-    btn.textContent = '✓';
-    btn.style.background = 'var(--verde)';
+    btn.textContent = esito.inCoda ? '⏳' : '✓';
+    btn.style.background = esito.inCoda ? 'var(--arancio, #e8a000)' : 'var(--verde)';
     const okEl = document.getElementById('ok-' + inputId);
     if (okEl) okEl.style.display = 'block';
     _datiModificati = false;
@@ -732,11 +737,10 @@ async function fineSeduta(nSeduta, btn) {
   const locale   = L === EN ? 'en-GB' : 'it-IT';
   const data     = ora.toLocaleDateString(locale);
   const orario   = ora.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
-  const bw       = parseFloat(document.getElementById('peso-input')?.value) || 0;
 
   const salvati  = [];
   const mancanti = [];
-  const promises = [];
+  const entries  = [];
 
   /* esercizi con campo kg */
   document.querySelectorAll(`.log-kg-input[data-seduta="${nSeduta}"]`).forEach(input => {
@@ -744,36 +748,17 @@ async function fineSeduta(nSeduta, btn) {
     const kg    = parseFloat(input.value);
     const rm    = parseInt(input.dataset.rm)    || null;
     const reps  = parseInt(input.dataset.reps)  || null;
-    const catena = input.dataset.catena;
 
     if (kg > 0 && rm) {
       const carico = parseFloat(input.dataset.carico) || null;
       const valore = carico != null ? `${carico} kg` : `RM ~${rm} kg`;
       salvati.push({ label: nome, detail: valore });
-      promises.push(fetch(API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          token: TOKEN, azione: 'log_progressi',
-          id_giocatrice: id, n_seduta: nSeduta,
-          esercizio: nome, data, valore, note: '',
-          kg_usati: kg, reps_fatte: reps || '', rm_stimato: rm,
-        }),
-      }));
+      entries.push({ id_giocatrice: id, n_seduta: nSeduta, esercizio: nome, data, valore, note: '', kg_usati: kg, reps_fatte: reps || '', rm_stimato: rm });
       ultimiLog[nome] = { valore, rm };
     } else if (kg > 0) {
       /* ha messo il peso ma non le reps — salva solo il kg */
       salvati.push({ label: nome, detail: `${kg} kg` });
-      promises.push(fetch(API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          token: TOKEN, azione: 'log_progressi',
-          id_giocatrice: id, n_seduta: nSeduta,
-          esercizio: nome, data, valore: `${kg} kg`, note: '',
-          kg_usati: kg, reps_fatte: '', rm_stimato: '',
-        }),
-      }));
+      entries.push({ id_giocatrice: id, n_seduta: nSeduta, esercizio: nome, data, valore: `${kg} kg`, note: '', kg_usati: kg, reps_fatte: '', rm_stimato: '' });
     } else {
       mancanti.push(nome);
     }
@@ -784,15 +769,7 @@ async function fineSeduta(nSeduta, btn) {
   if (rpeBtn) {
     const val = rpeBtn.textContent.trim();
     salvati.push({ label: L.rpeLabel, detail: `${val}/10` });
-    promises.push(fetch(API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({
-        token: TOKEN, azione: 'log_progressi',
-        id_giocatrice: id, n_seduta: nSeduta, esercizio: 'RPE-seduta',
-        data, valore: val, note: '', kg_usati: '', reps_fatte: '', rm_stimato: '',
-      }),
-    }));
+    entries.push({ id_giocatrice: id, n_seduta: nSeduta, esercizio: 'RPE-seduta', data, valore: val, note: '', kg_usati: '', reps_fatte: '', rm_stimato: '' });
   } else {
     mancanti.push(L.rpeLabel);
   }
@@ -802,21 +779,15 @@ async function fineSeduta(nSeduta, btn) {
   if (fatBtn) {
     const val = fatBtn.textContent.trim();
     salvati.push({ label: L.fatLabel, detail: `${val}/5` });
-    promises.push(fetch(API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({
-        token: TOKEN, azione: 'log_progressi',
-        id_giocatrice: id, n_seduta: nSeduta, esercizio: 'Fatica-seduta',
-        data, valore: val, note: '', kg_usati: '', reps_fatte: '', rm_stimato: '',
-      }),
-    }));
+    entries.push({ id_giocatrice: id, n_seduta: nSeduta, esercizio: 'Fatica-seduta', data, valore: val, note: '', kg_usati: '', reps_fatte: '', rm_stimato: '' });
   } else {
     mancanti.push(L.fatLabel);
   }
 
   try {
-    await Promise.all(promises);
+    /* invio con coda offline: le righe che non partono restano in coda locale */
+    const esiti = await Promise.all(entries.map(e => inviaLog(e)));
+    const inCoda = esiti.filter(x => x.inCoda).length;
 
     let report = `<div class="report-ts">${L.savedAt(data, orario)}</div>`;
 
@@ -827,6 +798,10 @@ async function fineSeduta(nSeduta, btn) {
         report += `<div class="report-item">✓ ${s.label} <em>${s.detail}</em></div>`;
       });
       report += `</div>`;
+    }
+
+    if (inCoda > 0) {
+      report += `<div class="report-section"><div class="report-label report-coda-label">${L.codaReport(inCoda)}</div></div>`;
     }
 
     if (mancanti.length) {
@@ -841,10 +816,13 @@ async function fineSeduta(nSeduta, btn) {
     const reportEl = document.getElementById(`report-${nSeduta}`);
     if (reportEl) { reportEl.innerHTML = report; reportEl.style.display = 'block'; }
 
-    btn.textContent      = L.saved;
-    btn.style.background = 'var(--verde)';
+    btn.textContent      = inCoda > 0 ? '⏳ ' + L.saved : L.saved;
+    btn.style.background = inCoda > 0 ? 'var(--arancio, #e8a000)' : 'var(--verde)';
     btn.style.color      = '#fff';
     _datiModificati      = false;
+
+    /* se c'è coda e torna la rete, la svuota automaticamente (evento online) */
+    aggiornaBannerOffline();
 
   } catch {
     btn.textContent      = L.errorBtn;
@@ -1039,16 +1017,11 @@ async function salvaPeso(btn) {
   btn.textContent = '...';
   btn.disabled    = true;
   try {
-    await fetch(API, {
-      method:  'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({
-        token: TOKEN, azione: 'log_progressi',
-        id_giocatrice: id, n_seduta: '0', esercizio: 'Peso-corporeo',
-        data: new Date().toLocaleDateString('it-IT'),
-        valore: String(val), note: '',
-        kg_usati: '', reps_fatte: '', rm_stimato: '',
-      }),
+    await inviaLog({
+      id_giocatrice: id, n_seduta: '0', esercizio: 'Peso-corporeo',
+      data: new Date().toLocaleDateString('it-IT'),
+      valore: String(val), note: '',
+      kg_usati: '', reps_fatte: '', rm_stimato: '',
     });
     const okEl = document.getElementById('ok-peso');
     if (okEl) { okEl.style.display = 'block'; setTimeout(() => okEl.style.display = 'none', 1500); }
@@ -1102,6 +1075,7 @@ window.addEventListener('beforeunload', e => {
 });
 
 caricaScheda();
+initOfflineBanner();
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js');

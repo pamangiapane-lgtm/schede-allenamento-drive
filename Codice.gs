@@ -33,6 +33,17 @@ const FOGLIO_FILE = {
 /* Collezioni che il coach può sovrascrivere (Progressi è solo append) */
 const FOGLIO_SCRIVIBILI = ['Giocatrici', 'Sedute', 'Esercizi', 'LibreriaIndividuale', 'Info'];
 
+/* Esegui questa funzione UNA volta dall'editor (▶ Esegui) per concedere
+   il permesso a Google Sheets (auth/spreadsheets). Poi ridistribuisci la Web App. */
+function autorizza() {
+  try {
+    SpreadsheetApp.openById('0'); // forza la richiesta del permesso spreadsheets
+  } catch (e) {
+    // l'errore qui è atteso (ID fittizio): il permesso viene chiesto prima dell'esecuzione
+  }
+  return 'Autorizzazione completata. Ora ridistribuisci la Web App.';
+}
+
 /* ============================================================
  * ENTRY POINT
  * ============================================================ */
@@ -46,6 +57,9 @@ function doGet(e) {
       if (!file) return errore('Foglio non valido: ' + foglio);
       return ok(leggiFile(file));
     }
+    if (az === 'lista_file') return listaFile();
+    if (az === 'leggi_qualsiasi') return leggiQualsiasi(e.parameter.file);
+    if (az === 'leggi_sheet') return leggiSheet(e.parameter.file);
     return errore('Azione GET non valida: ' + az);
   } catch (ex) {
     return errore(ex.toString());
@@ -63,6 +77,7 @@ function doPost(e) {
       return risposta({ ok: true });
     }
     if (az === 'log_progressi') return logProgressi(body);
+    if (az === 'log_progressi_bulk') return logProgressiBulk(body);
     if (az === 'scrivi_foglio') {
       if (body.chiave !== COACH_KEY) return errore('Chiave coach non valida');
       return scriviFoglio(body);
@@ -70,6 +85,10 @@ function doPost(e) {
     if (az === 'inizializza_dati') {
       if (body.chiave !== COACH_KEY) return errore('Chiave coach non valida');
       return inizializzaDati();
+    }
+    if (az === 'importa_sheet') {
+      if (body.chiave !== COACH_KEY) return errore('Chiave coach non valida');
+      return importaSheet(body.file);
     }
     return errore('Azione POST non valida: ' + az);
   } catch (ex) {
@@ -102,6 +121,97 @@ function scriviFileRaw(nomeFile, dati) {
 /* Lettura esposta (comoda per doGet) */
 function leggiFile(nomeFile) {
   return leggiFileRaw(nomeFile);
+}
+
+/* Elenco dei file presenti nella cartella FOLDER_ID (solo lettura) */
+function listaFile() {
+  const folder = DriveApp.getFolderById(FOLDER_ID);
+  const files  = folder.getFiles();
+  const out = [];
+  while (files.hasNext()) {
+    const f = files.next();
+    out.push({ nome: f.getName(), dimensione: f.getSize(), data: f.getDateCreated().toISOString() });
+  }
+  out.sort(function (a, b) { return a.nome.localeCompare(b.nome); });
+  return risposta({ ok: true, dati: out });
+}
+
+/* Lettura di un file qualsiasi nella cartella (solo lettura, per ispezione).
+   Se è JSON valido lo restituisce come "json", altrimenti come "anteprima" testuale. */
+function leggiQualsiasi(nomeFile) {
+  if (!nomeFile) return errore('Parametro file mancante');
+  const folder = DriveApp.getFolderById(FOLDER_ID);
+  const files  = folder.getFilesByName(nomeFile);
+  if (!files.hasNext()) return errore('File non trovato: ' + nomeFile);
+  const f = files.next();
+  const testo = f.getBlob().getDataAsString();
+  try {
+    return risposta({ ok: true, nome: f.getName(), json: JSON.parse(testo) });
+  } catch (e) {
+    return risposta({ ok: true, nome: f.getName(), anteprima: testo.slice(0, 8000) });
+  }
+}
+
+/* Ispezione di un Google Sheets nella cartella: per ogni foglio restituisce
+   nome, numero righe, intestazioni e 2 righe di esempio (solo lettura). */
+function leggiSheet(nomeFile) {
+  if (!nomeFile) return errore('Parametro file mancante');
+  const folder = DriveApp.getFolderById(FOLDER_ID);
+  const files  = folder.getFilesByName(nomeFile);
+  if (!files.hasNext()) return errore('File non trovato: ' + nomeFile);
+  const ss = SpreadsheetApp.openById(files.next().getId());
+  const out = {};
+  ss.getSheets().forEach(function (sh) {
+    const vals = sh.getDataRange().getValues();
+    const headers = vals.length ? vals[0] : [];
+    out[sh.getName()] = {
+      righe: Math.max(0, vals.length - 1),
+      headers: headers,
+      esempio: vals.slice(1, 3)
+    };
+  });
+  return risposta({ ok: true, nome: ss.getName(), fogli: out });
+}
+
+/* Converte un Google Sheets della cartella nei file JSON del database.
+   Mappa i fogli per nome → file JSON. I fogli non mappati sono ignorati. */
+function importaSheet(nomeFile) {
+  if (!nomeFile) return errore('Parametro file mancante');
+  const folder = DriveApp.getFolderById(FOLDER_ID);
+  const files  = folder.getFilesByName(nomeFile);
+  if (!files.hasNext()) return errore('File non trovato: ' + nomeFile);
+  const ss = SpreadsheetApp.openById(files.next().getId());
+
+  const MAP = {
+    'Giocatrici':          'giocatrici.json',
+    'Sedute':              'sedute.json',
+    'Esercizi':            'esercizi.json',
+    'LibreriaIndividuale': 'libreria_individuale.json',
+    'Progressi':           'progressi.json'
+  };
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const esiti = [];
+    ss.getSheets().forEach(function (sh) {
+      const nome = sh.getName();
+      const target = MAP[nome];
+      if (!target) { esiti.push({ foglio: nome, esito: 'ignorato' }); return; }
+      const vals = sh.getDataRange().getValues();
+      const headers = vals.length ? vals[0] : [];
+      const righe = vals.slice(1).map(function (r) {
+        const o = {};
+        headers.forEach(function (h, i) { o[h] = r[i]; });
+        return o;
+      });
+      scriviFileRaw(target, righe);
+      esiti.push({ foglio: nome, esito: 'importato', file: target, righe: righe.length });
+    });
+    return risposta({ ok: true, esiti: esiti });
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /* Scrittura esposta con lock (per sostituzione intera di una collezione) */
@@ -139,6 +249,37 @@ function logProgressi(body) {
     });
     scriviFileRaw('progressi.json', progressi);
     return risposta({ ok: true, logged: 1 });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/* Append in blocco (append-only, stesso formato di logProgressi).
+   Utile per import storici e sincronizzazione coda offline. Max 200 righe per chiamata. */
+function logProgressiBulk(body) {
+  const righe = Array.isArray(body.righe) ? body.righe : [];
+  if (!righe.length) return errore('Nessuna riga da salvare');
+  if (righe.length > 200) return errore('Massimo 200 righe per chiamata');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const progressi = leggiFileRaw('progressi.json');
+    righe.forEach(function (r) {
+      progressi.push({
+        Timestamp:     r.Timestamp || new Date().toISOString(),
+        ID_Giocatrice: r.ID_Giocatrice,
+        N_Seduta:      r.N_Seduta,
+        Esercizio:     r.Esercizio,
+        Data:          r.Data,
+        Valore:        r.Valore,
+        Note:          r.Note || '',
+        Kg_Usati:      r.Kg_Usati || '',
+        Reps_Fatte:    r.Reps_Fatte || '',
+        RM_Stimato:    r.RM_Stimato || ''
+      });
+    });
+    scriviFileRaw('progressi.json', progressi);
+    return risposta({ ok: true, logged: righe.length, totale: progressi.length });
   } finally {
     lock.releaseLock();
   }

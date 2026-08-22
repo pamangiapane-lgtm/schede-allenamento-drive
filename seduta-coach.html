@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Seduta Live — Coach</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1a3a6b">
+  <link rel="apple-touch-icon" href="icon.svg">
+</head>
+<body>
+
+<header>
+  <div class="header-brand">
+    <img src="icon.svg" class="site-logo" alt="Logo squadra">
+    <h1>Seduta Live</h1>
+  </div>
+</header>
+
+<div id="offline-banner" class="offline-banner" style="display:none"></div>
+
+<div class="container coach-wrap">
+
+  <div id="login-view" class="coach-login">
+    <h2>Accesso coach</h2>
+    <input type="password" id="chiave-input" placeholder="Chiave coach" autocomplete="off">
+    <button class="coach-btn" id="login-btn" onclick="login()">Entra</button>
+    <div class="coach-msg" id="login-msg"></div>
+  </div>
+
+  <div id="main-view" style="display:none">
+
+    <!-- toolbar -->
+    <div class="live-toolbar">
+      <select id="seduta-select" onchange="renderPiano()"></select>
+      <select id="atleta-select" onchange="renderPiano()"></select>
+      <label class="live-toggle"><input type="checkbox" id="var-toggle" onchange="renderPiano()"> individuali</label>
+      <button class="coach-btn" onclick="caricaTutto()">↻</button>
+    </div>
+
+    <!-- timer recupero -->
+    <div class="live-timer-card">
+      <div class="live-timer-label">Recupero</div>
+      <div class="live-timer-display" id="timer-display">02:00</div>
+      <div class="live-timer-presets" id="timer-presets"></div>
+      <div class="live-timer-actions">
+        <button class="coach-btn" id="timer-start" onclick="timerStart()">Avvia</button>
+        <button class="coach-btn ghost" onclick="timerPause()">Pausa</button>
+        <button class="coach-btn ghost" onclick="timerReset()">Azzera</button>
+      </div>
+    </div>
+
+    <!-- piano seduta -->
+    <div id="piano-view"><p class="loading-msg">Seleziona una seduta…</p></div>
+
+    <!-- stato oggi -->
+    <div class="coach-sez">
+      <h2>Stato atlete — oggi <button class="coach-btn ghost" style="float:right" onclick="renderOggi()">↻ Aggiorna</button></h2>
+      <div id="oggi-view"><p class="loading-msg">Caricamento…</p></div>
+    </div>
+
+    <div class="coach-toolbar" style="margin-top:12px">
+      <a class="coach-btn ghost" href="dashboard.html" style="text-decoration:none">◀ Dashboard</a>
+      <a class="coach-btn ghost" href="index.html" style="text-decoration:none">Squadra</a>
+      <button class="coach-btn ghost" onclick="logout()">Esci</button>
+    </div>
+  </div>
+</div>
+
+<script src="dati.js"></script>
+<script>
+let COACH_KEY = null;
+let DATI = null;
+const PRESET = [30, 45, 60, 90, 120, 180];
+
+function msg(el, testo, ok) {
+  el.textContent = testo;
+  el.className = 'coach-msg ' + (ok ? 'ok' : 'err');
+}
+
+async function login() {
+  const chiave = document.getElementById('chiave-input').value.trim();
+  const el = document.getElementById('login-msg');
+  if (!chiave) { msg(el, 'Inserisci la chiave.', false); return; }
+  try {
+    const r = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ token: TOKEN, azione: 'verifica_coach', chiave })
+    });
+    const json = await r.json();
+    if (!json.ok) { msg(el, json.errore || 'Chiave non valida', false); return; }
+    COACH_KEY = chiave;
+    sessionStorage.setItem('coachKey', chiave);
+    document.getElementById('login-view').style.display = 'none';
+    document.getElementById('main-view').style.display = '';
+    initTimerUI();
+    caricaTutto();
+  } catch (e) {
+    msg(el, 'Errore di rete. Riprova.', false);
+  }
+}
+
+function logout() {
+  COACH_KEY = null;
+  sessionStorage.removeItem('coachKey');
+  location.reload();
+}
+
+/* ---------- dati ---------- */
+const atlete = () => (DATI.giocatrici || []).filter(g => !isNaN(parseInt(g.ID)) && String(g.ID) !== '99');
+
+async function caricaTutto() {
+  try {
+    const [g, p, s, e] = await Promise.all([
+      getDati('Giocatrici'), getDati('Progressi'), getDati('Sedute'), getDati('Esercizi')
+    ]);
+    DATI = { giocatrici: g.dati, progressi: p.dati, sedute: s.dati, esercizi: e.dati };
+
+    /* select sedute (ordine da Ordine) */
+    const sedSel = document.getElementById('seduta-select');
+    const sedute = [...DATI.sedute].sort((a, b) => (Number(a.Ordine) - Number(b.Ordine)) || String(a.Numero_Seduta).localeCompare(String(b.Numero_Seduta), undefined, { numeric: true }));
+    sedSel.innerHTML = sedute.map(s => `<option value="${s.Numero_Seduta}">${s.Numero_Seduta} — ${s.Nome_Seduta}</option>`).join('');
+
+    /* select atleta */
+    const atlSel = document.getElementById('atleta-select');
+    atlSel.innerHTML = `<option value="">Tutte le atlete</option>` +
+      atlete().map(a => `<option value="${a.ID}">${a.Nome}</option>`).join('');
+
+    renderPiano();
+    renderOggi();
+    aggiornaBannerOffline();
+  } catch (e) {
+    document.getElementById('piano-view').innerHTML = '<p class="errore-msg">Errore nel caricamento. Riprova.</p>';
+  }
+}
+
+/* ---------- piano seduta ---------- */
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function chip(label, val) {
+  return val ? `<span class="live-chip"><em>${label}</em>${esc(val)}</span>` : '';
+}
+
+function istruzioniHtml(e) {
+  if (!e.Istruzione) return '';
+  let ins;
+  try { ins = JSON.parse(e.Istruzione); } catch (err) { return ''; }
+  if (typeof ins !== 'object' || !ins) return '';
+  const parti = [];
+  if (ins.h) parti.push(`<div class="istr-item"><strong>Come fare</strong><p>${esc(ins.h)}</p></div>`);
+  if (ins.f) parti.push(`<div class="istr-item"><strong>Sensazione</strong><p>${esc(ins.f)}</p></div>`);
+  if (ins.a) parti.push(`<div class="istr-item"><strong>Evitare</strong><p>${esc(ins.a)}</p></div>`);
+  if (!parti.length && ins.h_en) parti.push(`<div class="istr-item"><strong>How to</strong><p>${esc(ins.h_en)}</p></div>`);
+  if (!parti.length && ins.n) parti.push(`<div class="istr-item"><p>${esc(ins.n)}</p></div>`);
+  if (!parti.length) return '';
+  const uid = 'istr-' + Math.random().toString(36).slice(2, 8);
+  return `
+    <button class="istr-toggle" onclick="toggleIstr('${uid}')">ℹ️ Istruzioni <span class="istr-chevron">▸</span></button>
+    <div class="istr-panel" id="${uid}" style="display:none">${parti.join('')}</div>`;
+}
+
+function quickLogHtml(e, nSeduta) {
+  if (!e.Serie) return ''; /* niente parametri di carico → niente log rapido */
+  const uid = 'ql-' + Math.random().toString(36).slice(2, 8);
+  return `
+    <div class="live-quicklog" id="${uid}" data-seduta="${esc(nSeduta)}" data-esercizio="${esc(e.Esercizio)}">
+      <input type="number" inputmode="decimal" step="0.5" min="0" placeholder="kg" class="live-qkg">
+      <input type="number" inputmode="numeric" step="1" min="0" placeholder="reps" class="live-qreps">
+      <button class="coach-btn" onclick="quickLog('${uid}')">✓</button>
+      <span class="live-qmsg"></span>
+    </div>`;
+}
+
+async function quickLog(uid) {
+  const box = document.getElementById(uid);
+  if (!box) return;
+  const nSeduta   = box.dataset.seduta;
+  const esercizio = box.dataset.esercizio;
+  const atletaSel = document.getElementById('atleta-select');
+  const idAtl = atletaSel.value;
+  const kg   = parseFloat(box.querySelector('.live-qkg').value);
+  const reps = parseInt(box.querySelector('.live-qreps').value) || null;
+  const msgEl = box.querySelector('.live-qmsg');
+
+  if (!idAtl)  { msgEl.textContent = '← scegli un\'atleta'; msgEl.className = 'live-qmsg err'; return; }
+  if (!(kg > 0)) { msgEl.textContent = 'kg mancanti'; msgEl.className = 'live-qmsg err'; return; }
+
+  const rm = reps > 0 ? Math.round(kg * (1 + reps / 30)) : null;
+  const valore = rm ? `RM ~${rm} kg` : `${kg} kg`;
+  const data = new Date().toLocaleDateString('it-IT');
+
+  try {
+    const esito = await inviaLog({
+      id_giocatrice: idAtl, n_seduta: nSeduta, esercizio,
+      data, valore, note: '',
+      kg_usati: kg, reps_fatte: reps || '', rm_stimato: rm || '',
+    });
+    msgEl.textContent = esito.inCoda ? '⏳ in coda' : '✓ salvato';
+    msgEl.className = 'live-qmsg ' + (esito.inCoda ? 'coda' : 'ok');
+    renderOggi();
+  } catch (e) {
+    msgEl.textContent = 'errore';
+    msgEl.className = 'live-qmsg err';
+  }
+}
+
+function toggleIstr(uid) {
+  const p = document.getElementById(uid);
+  const open = p.style.display !== 'none';
+  p.style.display = open ? 'none' : 'block';
+  const ch = p.previousElementSibling?.querySelector('.istr-chevron');
+  if (ch) ch.textContent = open ? '▸' : '▾';
+}
+
+function renderPiano() {
+  const el = document.getElementById('piano-view');
+  if (!DATI) return;
+  const nSeduta = document.getElementById('seduta-select').value;
+  const idAtl   = document.getElementById('atleta-select').value;
+  const conVar  = document.getElementById('var-toggle').checked;
+
+  const eserc = DATI.esercizi.filter(e => {
+    if (String(e.N_Seduta) !== String(nSeduta)) return false;
+    if (String(e.ID_Giocatrice) === '0') return true;
+    if (conVar && idAtl && String(e.ID_Giocatrice) === String(idAtl)) return true;
+    return false;
+  });
+
+  if (!eserc.length) { el.innerHTML = '<p class="loading-msg">Nessun esercizio per questa seduta.</p>'; return; }
+
+  /* raggruppa per metodo mantenendo ordine */
+  const metodi = [];
+  const map = {};
+  eserc.sort((a, b) => (Number(a.Ord_Metodo) - Number(b.Ord_Metodo)) || (Number(a.Ord_Eserc) - Number(b.Ord_Eserc)))
+        .forEach(e => {
+          const key = e.Metodo || '—';
+          if (!map[key]) { map[key] = []; metodi.push(key); }
+          map[key].push(e);
+        });
+
+  el.innerHTML = metodi.map(m => `
+    <div class="live-metodo">
+      <div class="live-metodo-titolo">${esc(m)}</div>
+      ${map[m].map(e => `
+        <div class="live-esercizio">
+          <div class="live-eserc-head">
+            <span class="live-eserc-nome">${esc(e.Esercizio)}</span>
+            ${e.VideoURL ? `<a class="live-video" href="${esc(e.VideoURL)}" target="_blank" rel="noopener">▶ video</a>` : ''}
+          </div>
+          <div class="live-chips">
+            ${chip('Serie', e.Serie)}
+            ${chip('Reps', e.Reps)}
+            ${chip('Intensità', e['Intensità'])}
+            ${chip('Rec', e.Recupero)}
+            ${e.RPE ? chip('RPE', e.RPE) : ''}
+          </div>
+          ${e.Note ? `<div class="live-note">${esc(e.Note)}</div>` : ''}
+          ${istruzioniHtml(e)}
+          ${quickLogHtml(e, nSeduta)}
+        </div>`).join('')}
+    </div>`).join('');
+}
+
+/* ---------- stato oggi ---------- */
+function renderOggi() {
+  const el = document.getElementById('oggi-view');
+  if (!DATI) return;
+  const oggi = new Date();
+
+  const rows = (DATI.progressi || [])
+    .filter(p => String(p.ID_Giocatrice) !== '99')
+    .filter(p => stessaData(parseData(p.Data), oggi))
+    .sort((a, b) => String(a.Timestamp).localeCompare(String(b.Timestamp)));
+
+  const byAtleta = {};
+  rows.forEach(p => {
+    const k = String(p.ID_Giocatrice);
+    if (!byAtleta[k]) byAtleta[k] = [];
+    byAtleta[k].push(p);
+  });
+
+  const righe = atlete().map(a => {
+    const r = byAtleta[String(a.ID)] || [];
+    const rpe = r.filter(p => p.Esercizio === 'RPE-seduta').pop();
+    const fat = r.filter(p => p.Esercizio === 'Fatica-seduta').pop();
+    const esercizi = r.filter(p => p.Esercizio !== 'RPE-seduta' && p.Esercizio !== 'Fatica-seduta');
+    const ultimo = esercizi.length ? esercizi[esercizi.length - 1] : null;
+    let ora = '';
+    if (ultimo && ultimo.Timestamp) {
+      const t = new Date(ultimo.Timestamp);
+      if (!isNaN(t)) ora = t.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+    }
+    return `<tr>
+      <td><a class="dash-link" href="scheda.html?id=${a.ID}">${a.Nome}</a></td>
+      <td>${r.length || '—'}</td>
+      <td>${rpe ? rpe.Valore + '/10' : '—'}</td>
+      <td>${fat ? fat.Valore + '/5' : '—'}</td>
+      <td>${ultimo ? `${esc(ultimo.Esercizio)} ${ora ? '<em>' + ora + '</em>' : ''}` : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `<table class="coach-table">
+    <tr><th>Atleta</th><th>Log oggi</th><th>RPE</th><th>Fatica</th><th>Ultimo esercizio</th></tr>
+    ${righe || '<tr><td colspan="5">Nessun log oggi.</td></tr>'}
+  </table>`;
+}
+
+/* ---------- timer ---------- */
+let TIMER = { durata: 120, resto: 120, endAt: null, id: null };
+
+function initTimerUI() {
+  const pre = document.getElementById('timer-presets');
+  pre.innerHTML = PRESET.map(s =>
+    `<button class="live-preset${s === TIMER.durata ? ' sel' : ''}" data-s="${s}" onclick="timerSet(${s})">${s >= 60 ? Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') : s + 's'}</button>`
+  ).join('');
+  timerReset();
+}
+
+function timerSet(s) {
+  TIMER.durata = s;
+  timerStop();
+  timerReset();
+  initTimerUI();
+}
+
+function timerStart() {
+  if (TIMER.id) return;
+  TIMER.endAt = Date.now() + TIMER.resto * 1000;
+  TIMER.id = setInterval(timerTick, 250);
+  timerTick();
+}
+
+function timerPause() {
+  if (!TIMER.id) return;
+  TIMER.resto = Math.max(0, (TIMER.endAt - Date.now()) / 1000);
+  timerStop();
+  timerPaint();
+}
+
+function timerStop() {
+  if (TIMER.id) { clearInterval(TIMER.id); TIMER.id = null; }
+}
+
+function timerReset() {
+  timerStop();
+  TIMER.resto = TIMER.durata;
+  timerPaint();
+}
+
+function timerTick() {
+  TIMER.resto = Math.max(0, (TIMER.endAt - Date.now()) / 1000);
+  timerPaint();
+  if (TIMER.resto <= 0) {
+    timerStop();
+    timerPaint();
+    timerSuona();
+    if (navigator.vibrate) navigator.vibrate([300, 150, 300]);
+  }
+}
+
+function timerPaint() {
+  const s = Math.ceil(TIMER.resto);
+  const mm = String(Math.floor(s / 60)).padStart(2, '0');
+  const ss = String(s % 60).padStart(2, '0');
+  document.getElementById('timer-display').textContent = `${mm}:${ss}`;
+  document.getElementById('timer-display').classList.toggle('live-timer-go', !!TIMER.id);
+}
+
+function timerSuona() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [0, 0.35, 0.7].forEach(t => {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.value = 880;
+      o.connect(g); g.connect(ctx.destination);
+      const start = ctx.currentTime + t;
+      g.gain.setValueAtTime(0.001, start);
+      g.gain.exponentialRampToValueAtTime(0.4, start + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, start + 0.25);
+      o.start(start); o.stop(start + 0.3);
+    });
+  } catch (e) { /* audio non disponibile */ }
+}
+
+/* ripristino sessione */
+(function () {
+  const k = sessionStorage.getItem('coachKey');
+  if (k) {
+    COACH_KEY = k;
+    document.getElementById('login-view').style.display = 'none';
+    document.getElementById('main-view').style.display = '';
+    initTimerUI();
+    caricaTutto();
+  }
+})();
+
+initOfflineBanner();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
+</script>
+
+</body>
+</html>

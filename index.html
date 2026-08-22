@@ -20,6 +20,8 @@
   <div id="dev-banner" style="display:none;background:#e8a000;color:#fff;font-size:0.75rem;font-weight:700;letter-spacing:1px;padding:3px 0;margin-top:6px;">⚠ AMBIENTE DI TEST — NON UFFICIALE</div>
 </header>
 
+<div id="offline-banner" class="offline-banner" style="display:none"></div>
+
 <div class="container">
   <p class="squadra-titolo">Giocatrici</p>
   <div id="lista-giocatrici">
@@ -36,13 +38,9 @@
   </div>
 </div>
 
+<script src="dati.js"></script>
 <script>
-/* ---------- configurazione ---------- */
-const IS_DEV = window.location.pathname.includes('/dev/');
-const API   = IS_DEV
-  ? 'https://script.google.com/macros/s/AKfycbxvILKHvT01CCNRqaLzea-V2pm5lC3yNKJxUjFG9I28PYB52mAejeWgZZufXJYBi5OflA/exec'
-  : 'https://script.google.com/macros/s/AKfycbxvILKHvT01CCNRqaLzea-V2pm5lC3yNKJxUjFG9I28PYB52mAejeWgZZufXJYBi5OflA/exec';
-const TOKEN = 'tk-e9fe32f6fc35456a';
+/* ---------- configurazione (in dati.js: API, TOKEN, IS_DEV) ---------- */
 
 if (IS_DEV) {
   document.title = '[DEV] Squadra — Schede Allenamento';
@@ -53,11 +51,7 @@ if (IS_DEV) {
 async function caricaGiocatrici() {
   const lista = document.getElementById('lista-giocatrici');
   try {
-    const res  = await fetch(`${API}?token=${TOKEN}&azione=leggi&foglio=Giocatrici`);
-    const json = await res.json();
-    if (!json.ok) throw new Error(json.errore);
-
-    const dati   = json.dati || [];
+    const { dati } = await getDati('Giocatrici');
     const reali  = dati.filter(g => !isNaN(parseInt(g.ID)) && String(g.ID) !== '99' && g.Attiva !== 'NO')
                         .sort((a, b) => String(a.Nome).localeCompare(String(b.Nome), 'it', { sensitivity: 'base' }));
     const demo   = dati.find(g => String(g.ID) === '99');
@@ -87,6 +81,7 @@ function cardGiocatrice(g, isDemo) {
 }
 
 caricaGiocatrici();
+initOfflineBanner();
 
 /* ---------- PWA ---------- */
 if ('serviceWorker' in navigator) {

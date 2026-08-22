@@ -1,5 +1,5 @@
-const CACHE = 'schede-v1';
-const STATIC = ['./', './index.html', './scheda.html', './coach.html', './report.html', './style.css', './icon.svg', './manifest.json'];
+const CACHE = 'schede-v2';
+const STATIC = ['./', './index.html', './scheda.html', './coach.html', './report.html', './dashboard.html', './seduta-coach.html', './dati.js', './style.css', './icon.svg', './manifest.json'];
 
 self.addEventListener('install', e => {
   e.waitUntil(

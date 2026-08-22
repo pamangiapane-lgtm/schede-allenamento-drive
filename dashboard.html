@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Coach — Schede Allenamento</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1a3a6b">
+  <link rel="apple-touch-icon" href="icon.svg">
+</head>
+<body>
+
+<header>
+  <div class="header-brand">
+    <img src="icon.svg" class="site-logo" alt="Logo squadra">
+    <h1>Dashboard Coach</h1>
+  </div>
+</header>
+
+<div id="offline-banner" class="offline-banner" style="display:none"></div>
+
+<div class="container coach-wrap">
+
+  <div id="login-view" class="coach-login">
+    <h2>Accesso coach</h2>
+    <input type="password" id="chiave-input" placeholder="Chiave coach" autocomplete="off">
+    <button class="coach-btn" id="login-btn" onclick="login()">Entra</button>
+    <div class="coach-msg" id="login-msg"></div>
+  </div>
+
+  <div id="main-view" style="display:none">
+
+    <div class="coach-toolbar" style="margin-bottom:12px">
+      <button class="coach-btn" onclick="caricaTutto()">↻ Aggiorna</button>
+      <a class="coach-btn ghost" href="seduta-coach.html" style="text-decoration:none">▶ Seduta live</a>
+      <a class="coach-btn ghost" href="coach.html" style="text-decoration:none">⚙ Gestione dati</a>
+      <a class="coach-btn ghost" href="index.html" style="text-decoration:none">Squadra</a>
+    </div>
+
+    <div class="dash-cards" id="dash-cards"></div>
+
+    <div class="coach-sez">
+      <h2>Stato atlete <span class="dash-sub" id="stato-sub"></span></h2>
+      <div id="stato-view"><p class="loading-msg">Caricamento…</p></div>
+    </div>
+
+    <div class="coach-sez">
+      <h2>Ultimi 20 log</h2>
+      <div id="ultimi-view"><p class="loading-msg">Caricamento…</p></div>
+    </div>
+
+    <button class="coach-btn ghost" onclick="logout()">Esci</button>
+  </div>
+</div>
+
+<script src="dati.js"></script>
+<script>
+let COACH_KEY = null;
+
+function msg(el, testo, ok) {
+  el.textContent = testo;
+  el.className = 'coach-msg ' + (ok ? 'ok' : 'err');
+}
+
+async function login() {
+  const chiave = document.getElementById('chiave-input').value.trim();
+  const el = document.getElementById('login-msg');
+  if (!chiave) { msg(el, 'Inserisci la chiave.', false); return; }
+  try {
+    const r = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ token: TOKEN, azione: 'verifica_coach', chiave })
+    });
+    const json = await r.json();
+    if (!json.ok) { msg(el, json.errore || 'Chiave non valida', false); return; }
+    COACH_KEY = chiave;
+    sessionStorage.setItem('coachKey', chiave);
+    document.getElementById('login-view').style.display = 'none';
+    document.getElementById('main-view').style.display = '';
+    caricaTutto();
+  } catch (e) {
+    msg(el, 'Errore di rete. Riprova.', false);
+  }
+}
+
+function logout() {
+  COACH_KEY = null;
+  sessionStorage.removeItem('coachKey');
+  location.reload();
+}
+
+/* ---------- dati ---------- */
+let DATI = null;
+
+async function caricaTutto() {
+  try {
+    const [g, p, s] = await Promise.all([getDati('Giocatrici'), getDati('Progressi'), getDati('Sedute')]);
+    DATI = { giocatrici: g.dati, progressi: p.dati, sedute: s.dati };
+    renderCards();
+    renderStato();
+    renderUltimi();
+    aggiornaBannerOffline();
+  } catch (e) {
+    document.getElementById('stato-view').innerHTML = '<p class="errore-msg">Errore nel caricamento. Riprova.</p>';
+  }
+}
+
+const atlete = () => (DATI.giocatrici || []).filter(g => !isNaN(parseInt(g.ID)) && String(g.ID) !== '99');
+const progressiReali = () => (DATI.progressi || []).filter(p => String(p.ID_Giocatrice) !== '99');
+
+function media(arr) {
+  if (!arr.length) return null;
+  return arr.reduce((a, b) => a + b, 0) / arr.length;
+}
+
+function renderCards() {
+  const pro = progressiReali();
+  const oggi = new Date();
+  const in7 = pro.filter(p => { const d = parseData(p.Data); return d && giorniFa(d) <= 7 && giorniFa(d) >= 0; });
+  const rpe7 = in7.filter(p => p.Esercizio === 'RPE-seduta').map(p => Number(p.Valore)).filter(v => !isNaN(v));
+  const rpeMedia = media(rpe7);
+  const coda = codaCount();
+
+  const cards = [
+    { n: atlete().length, l: 'Atlete attive' },
+    { n: pro.length, l: 'Log totali' },
+    { n: in7.length, l: 'Log ultimi 7 giorni' },
+    { n: rpeMedia != null ? rpeMedia.toFixed(1) : '—', l: 'RPE medio 7gg' },
+  ];
+  if (coda > 0) cards.push({ n: coda, l: 'Log in coda (offline)' });
+
+  document.getElementById('dash-cards').innerHTML = cards.map(c =>
+    `<div class="dash-card"><div class="dash-num">${c.n}</div><div class="dash-label">${c.l}</div></div>`
+  ).join('');
+}
+
+function renderStato() {
+  const el = document.getElementById('stato-view');
+  const pro = progressiReali().sort((a, b) => String(a.Timestamp).localeCompare(String(b.Timestamp)));
+  const oggi = new Date();
+  const byAtleta = {};
+  pro.forEach(p => {
+    const k = String(p.ID_Giocatrice);
+    if (!byAtleta[k]) byAtleta[k] = [];
+    byAtleta[k].push(p);
+  });
+
+  const righe = atlete().map(a => {
+    const rows = byAtleta[String(a.ID)] || [];
+    const ultimo = rows.length ? rows[rows.length - 1] : null;
+    const in7 = rows.filter(p => { const d = parseData(p.Data); return d && giorniFa(d) <= 7 && giorniFa(d) >= 0; });
+    const rpeVals = in7.filter(p => p.Esercizio === 'RPE-seduta').map(p => Number(p.Valore)).filter(v => !isNaN(v));
+    const rpe7 = media(rpeVals);
+    const ultimaRPE = [...rows].reverse().find(p => p.Esercizio === 'RPE-seduta');
+    const dUlt = ultimo ? parseData(ultimo.Data) : null;
+    const gg = dUlt ? giorniFa(dUlt) : null;
+    return `<tr>
+      <td><a class="dash-link" href="scheda.html?id=${a.ID}">${a.Nome}</a></td>
+      <td>${ultimo ? `${ultimo.Esercizio} <em>(${gg === 0 ? 'oggi' : gg + 'g fa'})</em>` : '—'}</td>
+      <td>${in7.length}</td>
+      <td>${rpe7 != null ? rpe7.toFixed(1) : '—'}</td>
+      <td>${ultimaRPE ? ultimaRPE.Valore + '/10' : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('stato-sub').textContent = `— ${atlete().length} atlete`;
+  el.innerHTML = `<table class="coach-table">
+    <tr><th>Atleta</th><th>Ultimo log</th><th>Log 7gg</th><th>RPE medio 7gg</th><th>Ultima RPE</th></tr>
+    ${righe || '<tr><td colspan="5">Nessun dato.</td></tr>'}
+  </table>`;
+}
+
+function renderUltimi() {
+  const el = document.getElementById('ultimi-view');
+  const nomi = {};
+  atlete().forEach(a => nomi[String(a.ID)] = a.Nome);
+
+  const ultimi = progressiReali()
+    .sort((a, b) => String(b.Timestamp).localeCompare(String(a.Timestamp)))
+    .slice(0, 20);
+
+  if (!ultimi.length) { el.innerHTML = '<p class="loading-msg">Nessun log registrato.</p>'; return; }
+
+  el.innerHTML = `<table class="coach-table">
+    <tr><th>Data</th><th>Atleta</th><th>Seduta</th><th>Esercizio</th><th>Valore</th><th>RM</th></tr>
+    ${ultimi.map(p => `<tr>
+      <td>${typeof p.Data === 'string' && p.Data.includes('T') ? p.Data.slice(0, 10) : (p.Data || '')}</td>
+      <td>${nomi[String(p.ID_Giocatrice)] || p.ID_Giocatrice}</td>
+      <td>${p.N_Seduta || ''}</td>
+      <td>${p.Esercizio}</td>
+      <td>${p.Valore ?? ''}</td>
+      <td>${p.RM_Stimato ? '~' + p.RM_Stimato + ' kg' : ''}</td>
+    </tr>`).join('')}
+  </table>`;
+}
+
+/* ripristino sessione */
+(function () {
+  const k = sessionStorage.getItem('coachKey');
+  if (k) {
+    COACH_KEY = k;
+    document.getElementById('login-view').style.display = 'none';
+    document.getElementById('main-view').style.display = '';
+    caricaTutto();
+  }
+})();
+
+initOfflineBanner();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
+</script>
+
+</body>
+</html>

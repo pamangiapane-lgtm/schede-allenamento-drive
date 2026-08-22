@@ -1090,3 +1090,60 @@ header p  { font-size: 0.82rem; opacity: 0.70; margin-top: 3px; }
 
 /* ===== DEMO (account ID 99) ===== */
 .giocatrice-demo { opacity: .6; border-style: dashed !important; }
+
+/* ===== OFFLINE + DASHBOARD + SEDUTA LIVE (fase presenza) ===== */
+.offline-banner {
+  background: #e8a000; color: #fff;
+  font-size: 0.8rem; font-weight: 700; text-align: center;
+  padding: 8px 12px; letter-spacing: 0.3px;
+}
+.offline-banner.coda { background: #7a4d00; }
+
+.dash-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.dash-card { background: #fff; border: 1px solid var(--bordo); border-radius: 12px; padding: 14px; text-align: center; }
+.dash-num { font-size: 1.7rem; font-weight: 800; color: var(--blu); }
+.dash-label { font-size: 0.72rem; color: var(--testo-sec); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+.dash-sub { font-weight: 400; font-size: 0.75rem; color: var(--testo-sec); }
+.dash-link { color: var(--blu); font-weight: 700; text-decoration: none; }
+
+.live-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.live-toolbar select { flex: 1; min-width: 140px; padding: 10px 12px; border: 1px solid var(--bordo); border-radius: 8px; font-size: 0.9rem; background: #fff; }
+.live-toggle { display: flex; align-items: center; gap: 5px; font-size: 0.8rem; color: var(--testo-sec); }
+
+.live-timer-card { background: var(--blu); color: #fff; border-radius: 14px; padding: 14px 16px; text-align: center; margin-bottom: 14px; }
+.live-timer-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1.2px; opacity: 0.8; }
+.live-timer-display { font-size: 3rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; margin: 2px 0 8px; }
+.live-timer-display.live-timer-go { color: #9fe89f; }
+.live-timer-presets { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-bottom: 10px; }
+.live-preset { background: rgba(255,255,255,0.14); color: #fff; border: 1px solid rgba(255,255,255,0.35); border-radius: 999px; padding: 5px 12px; font-size: 0.8rem; font-weight: 700; cursor: pointer; }
+.live-preset.sel { background: #fff; color: var(--blu); }
+.live-timer-actions { display: flex; gap: 8px; justify-content: center; }
+.live-timer-actions .coach-btn { background: #fff; color: var(--blu); }
+.live-timer-actions .coach-btn.ghost { color: #fff; border-color: rgba(255,255,255,0.5); }
+
+.live-metodo { background: #fff; border: 1px solid var(--bordo); border-radius: 12px; margin-bottom: 10px; overflow: hidden; }
+.live-metodo-titolo { background: var(--grigio); padding: 9px 14px; font-size: 0.78rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; color: var(--blu); border-bottom: 1px solid var(--bordo); }
+.live-esercizio { padding: 12px 14px; border-bottom: 1px solid var(--bordo); }
+.live-esercizio:last-child { border-bottom: none; }
+.live-eserc-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.live-eserc-nome { font-weight: 700; font-size: 0.95rem; }
+.live-video { font-size: 0.75rem; color: var(--blu); text-decoration: none; font-weight: 700; white-space: nowrap; }
+.live-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 7px 0 0; }
+.live-chip { background: #eaf0fb; border-radius: 6px; padding: 3px 8px; font-size: 0.78rem; }
+.live-chip em { font-style: normal; color: var(--testo-sec); margin-right: 4px; font-size: 0.7rem; }
+.live-note { margin-top: 6px; font-size: 0.8rem; color: var(--testo-sec); }
+.istr-toggle { margin-top: 8px; background: none; border: 1px solid var(--bordo); border-radius: 8px; padding: 6px 10px; font-size: 0.8rem; font-weight: 700; color: var(--blu); cursor: pointer; }
+.istr-panel { margin-top: 8px; background: var(--grigio); border-radius: 8px; padding: 8px 12px; }
+.istr-item { font-size: 0.8rem; line-height: 1.5; color: var(--testo); margin-bottom: 6px; }
+.istr-item strong { color: var(--blu); display: block; margin-bottom: 2px; }
+.istr-item p { margin: 0; color: var(--testo-sec); }
+
+.live-quicklog { display: flex; gap: 6px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+.live-quicklog input { width: 64px; padding: 8px 10px; border: 1px solid var(--bordo); border-radius: 8px; font-size: 0.9rem; }
+.live-quicklog .coach-btn { padding: 8px 14px; }
+.live-qmsg { font-size: 0.75rem; font-weight: 700; }
+.live-qmsg.ok { color: var(--verde); }
+.live-qmsg.coda { color: #e8a000; }
+.live-qmsg.err { color: #c33; }
+
+.report-coda-label { color: #e8a000; }
