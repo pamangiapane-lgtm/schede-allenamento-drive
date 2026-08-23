@@ -77,7 +77,7 @@ const IT = {
   instrP2:'Dopo ogni seduta <strong>aggiorna il massimale (1RM)</strong> nella sezione qui sotto in base a come hai sentito l\'esercizio. I carichi in scheda si calcolano da quel valore.',
   instrP3:'Compila i <strong>kg usati</strong> per ogni esercizio nella sezione Sedute e premi <strong>Salva</strong> per tenere lo storico aggiornato.',
   bwTitle:'Peso corporeo', bwPlaceholder:'es. 65', saveBtn:'Salva', savedOk:'✓ Salvato!',
-  histTitle:'Storico carichi', sessionFallback: n=>`Seduta ${n}`,
+  histTitle:'Storico carichi', histSub:'ultimo per esercizio', sessionFallback: n=>`Seduta ${n}`,
   maxTitle:'Massimali', enterRM:'Inserisci il tuo RM',
   afTitle:'Analisi Funzionale', stratTitle:'Strategia',
   prehabTitle:'Programma Prehab', prehabBtn:'Apri il programma personale',
@@ -108,7 +108,7 @@ const EN = {
   instrP2:'After each session, <strong>update your 1RM</strong> in the section below based on how the exercise felt. Your program loads are calculated from that value.',
   instrP3:'Fill in the <strong>kg used</strong> for each exercise in the Sessions tab and press <strong>Save</strong> to keep your history up to date.',
   bwTitle:'Body weight', bwPlaceholder:'e.g. 65', saveBtn:'Save', savedOk:'✓ Saved!',
-  histTitle:'Load History', sessionFallback: n=>`Session ${n}`,
+  histTitle:'Load History', histSub:'latest per exercise', sessionFallback: n=>`Session ${n}`,
   maxTitle:'1RM Maxes', enterRM:'Enter your 1RM',
   afTitle:'Functional Assessment', stratTitle:'Strategy',
   prehabTitle:'Prehab Program', prehabBtn:'Open personal program',
@@ -883,20 +883,18 @@ function buildProfilo(g, resE, resP, sedute) {
     .sort((a, b) => new Date(a.Timestamp) - new Date(b.Timestamp));
   const ultimoPeso = pesoLogs.length ? pesoLogs[pesoLogs.length - 1].Valore : '';
 
-  /* storico per seduta */
+  /* storico: mappa seduta → nome */
   const seduteMap = {};
   (sedute || []).forEach(s => { seduteMap[s.Numero_Seduta] = s.Nome_Seduta; });
 
   const SKIP = new Set(['Peso-corporeo', 'RPE-seduta', 'Fatica-seduta']);
-  const logPerSeduta = {};
+
+  /* storico carichi: solo ULTIMO valore per esercizio */
+  const ultimoLogPerEsercizio = {};
   progressi
     .filter(p => p.Valore && !SKIP.has(p.Esercizio))
     .sort((a, b) => new Date(a.Timestamp) - new Date(b.Timestamp))
-    .forEach(p => {
-      const sed = p.N_Seduta || '—';
-      if (!logPerSeduta[sed]) logPerSeduta[sed] = [];
-      logPerSeduta[sed].push(p);
-    });
+    .forEach(p => { ultimoLogPerEsercizio[p.Esercizio] = p; });
 
   /* RM lookup (ultima stima per esercizio) */
   const rmMap = {};
@@ -934,30 +932,23 @@ function buildProfilo(g, resE, resP, sedute) {
       <div class="log-salvato" id="ok-peso" style="padding:0 16px 10px">${L.savedOk}</div>
     </div>`;
 
-  /* 3. STORICO PER SEDUTA */
-  const sedKeys = Object.keys(logPerSeduta)
-    .sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }));
+  /* 3. STORICO CARICHI — un solo valore per esercizio (l'ultimo) */
+  const eserciziStorico = Object.entries(ultimoLogPerEsercizio)
+    .sort((a, b) => String(a[0]).localeCompare(String(b[0]), 'it', { sensitivity: 'base' }));
 
-  if (sedKeys.length > 0) {
-    html += `<div class="profilo-card"><div class="profilo-header">${L.histTitle}</div>`;
-    sedKeys.forEach(sed => {
-      const nomeSed = seduteMap[sed] || L.sessionFallback(sed);
-      const byEserc = {};
-      logPerSeduta[sed].forEach(p => {
-        if (!byEserc[p.Esercizio]) byEserc[p.Esercizio] = [];
-        byEserc[p.Esercizio].push(p);
-      });
-      html += `<div class="storico-sed-header">${nomeSed}</div>`;
-      Object.entries(byEserc).forEach(([nome, voci]) => {
-        const chips = voci.map(p =>
-          `<span class="storico-chip">${formatData(p.Data)}<br><strong>${p.Valore}</strong></span>`
-        ).join('');
-        html += `
-          <div class="storico-eserc">
-            <div class="storico-nome">${nome}</div>
-            <div class="storico-chips">${chips}</div>
-          </div>`;
-      });
+  if (eserciziStorico.length > 0) {
+    html += `<div class="profilo-card"><div class="profilo-header">${L.histTitle} <span class="dash-sub">(${L.histSub})</span></div>`;
+    eserciziStorico.forEach(([nome, p]) => {
+      const nomeSed = (p.N_Seduta && p.N_Seduta !== '0' && p.N_Seduta !== '—')
+        ? (seduteMap[p.N_Seduta] || L.sessionFallback(p.N_Seduta))
+        : '';
+      html += `
+        <div class="storico-eserc">
+          <div class="storico-nome">${nome}${nomeSed ? ` <span class="storico-sed">· ${nomeSed}</span>` : ''}</div>
+          <div class="storico-chips">
+            <span class="storico-chip">${formatData(p.Data)}<br><strong>${p.Valore}</strong></span>
+          </div>
+        </div>`;
     });
     html += `</div>`;
   }

@@ -2,3 +2,14 @@
 Codice.PROD.gs
 
 tools/_*.txt
+
+# Dati locali e temporanei (mai su GitHub)
+backup/
+tools/out/
+tools/_*
+
+# File non-app (Excel/temp) mai su GitHub
+*.xlsx
+~$*
+W1_*.md
+Prehab_Individuale_*

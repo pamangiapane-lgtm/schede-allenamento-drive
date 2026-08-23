@@ -1147,3 +1147,5 @@ header p  { font-size: 0.82rem; opacity: 0.70; margin-top: 3px; }
 .live-qmsg.err { color: #c33; }
 
 .report-coda-label { color: #e8a000; }
+
+.storico-sed { font-weight: 400; font-size: 0.72rem; color: var(--testo-sec); }
