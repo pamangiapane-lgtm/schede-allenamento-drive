@@ -216,6 +216,84 @@ function toggleIstr(uid) {
   if (ch) ch.textContent = open ? '▸' : '▾';
 }
 
+/* ---------- Prevenzione ruolo: anteprima Ruolo / Individuale ---------- */
+const PREV_RUOLO_CHIAVE = {
+  Centrale: 'Centrali', Palleggiatrice: 'Palleggiatrici',
+  Schiacciatrice: 'Schiacciatrici/Opposti', Opposto: 'Schiacciatrici/Opposti',
+  Banda: 'Schiacciatrici/Opposti', Libero: 'Libero',
+};
+
+function prevenzioneCoachHtml(e, nSeduta) {
+  const sett = Number((String(nSeduta).match(/^W(\d+)/) || [])[1] || 0);
+  let menu = {};
+  try { menu = JSON.parse(e.Menu_Ruolo || '{}'); } catch (err) { menu = {}; }
+
+  const idAtl  = document.getElementById('atleta-select').value;
+  const atleta = idAtl ? (DATI.giocatrici || []).find(g => String(g.ID) === String(idAtl)) : null;
+
+  let ind = null;
+  if (atleta && atleta.Prevenzione_Ind) {
+    try {
+      const p = JSON.parse(atleta.Prevenzione_Ind);
+      const n = sett <= 2 ? '1' : (sett <= 5 ? '2' : '3');
+      if (p.schede && p.schede[n]) ind = { nome: atleta.Nome, ...p.schede[n] };
+    } catch (err) { ind = null; }
+  }
+
+  const uid = 'pv-' + Math.random().toString(36).slice(2, 8);
+  const def = ind ? 'ind' : 'ruolo';
+
+  let h = `<div class="prev-toggle" id="pt-${uid}">`;
+  h += `<button class="prev-btn${def === 'ruolo' ? ' active' : ''}" data-opt="ruolo" onclick="togglePrevenzione('${uid}','ruolo')">Ruolo</button>`;
+  h += `<button class="prev-btn${def === 'ind' ? ' active' : ''}" data-opt="ind" onclick="togglePrevenzione('${uid}','ind')">Individuale</button>`;
+  h += `</div>`;
+
+  /* pannello ruolo: tutti i menù, evidenziato quello dell'atleta selezionata */
+  h += `<div class="prev-panel" data-panel="ruolo"${def === 'ruolo' ? '' : ' style="display:none"'}>`;
+  const chiaveAtleta = atleta && atleta.Ruolo ? PREV_RUOLO_CHIAVE[atleta.Ruolo] : null;
+  const righe = Object.keys(menu);
+  if (righe.length) {
+    righe.forEach(k => {
+      const attiva = chiaveAtleta === k;
+      h += `<div class="prev-ruolo-riga${attiva ? ' attiva' : ''}">${attiva ? '<b>' + esc(k) + '</b>' : esc(k)} — ${esc(menu[k])}</div>`;
+    });
+    if (!chiaveAtleta && atleta) h += `<div class="prev-vuoto">Ruolo non impostato per ${esc(atleta.Nome)}.</div>`;
+  } else {
+    h += `<div class="prev-vuoto">Menù per ruolo non disponibile.</div>`;
+  }
+  h += `</div>`;
+
+  /* pannello individuale */
+  h += `<div class="prev-panel" data-panel="ind"${def === 'ind' ? '' : ' style="display:none"'}>`;
+  if (ind && ind.esercizi && ind.esercizi.length) {
+    h += `<div class="prev-titolo">${esc(ind.nome)} — ${esc(ind.titolo)}</div>`;
+    if (ind.obiettivo) h += `<div class="prev-obiettivo">${esc(ind.obiettivo)}</div>`;
+    ind.esercizi.forEach(ex => {
+      const wk = ex.param && ex.param.weeks ? (ex.param.weeks[sett] || ex.param.weeks[String(sett)] || ex.param.extra || '') : (ex.param && ex.param.extra || '');
+      const meta = [wk, ex.param && ex.param.rpe && ex.param.rpe !== 'N/A' ? 'RPE ' + ex.param.rpe : '', ex.param && ex.param.tempo ? ex.param.tempo : ''].filter(Boolean);
+      h += `<div class="prev-es">`;
+      h += `<div class="prev-es-nome">${esc(ex.nome)}</div>`;
+      if (meta.length) h += `<div class="prev-es-meta">${meta.map(m => `<span class="prev-dose">${esc(m)}</span>`).join('')}</div>`;
+      if (ex.razionale) h += `<div class="prev-es-raz">${esc(ex.razionale)}</div>`;
+      if (ex.note) h += `<div class="prev-es-note">${esc(ex.note)}</div>`;
+      h += `</div>`;
+    });
+  } else {
+    h += `<div class="prev-vuoto">Seleziona un'atleta per vedere il suo programma individuale.</div>`;
+  }
+  h += `</div>`;
+  return h;
+}
+
+function togglePrevenzione(uid, opt) {
+  const wrap = document.getElementById('pt-' + uid);
+  if (!wrap) return;
+  const box = wrap.parentElement;
+  if (!box) return;
+  wrap.querySelectorAll('.prev-btn').forEach(b => b.classList.toggle('active', b.dataset.opt === opt));
+  box.querySelectorAll('.prev-panel').forEach(p => { p.style.display = (p.dataset.panel === opt) ? '' : 'none'; });
+}
+
 function renderPiano() {
   const el = document.getElementById('piano-view');
   if (!DATI) return;
@@ -259,6 +337,7 @@ function renderPiano() {
             ${e.RPE ? chip('RPE', e.RPE) : ''}
           </div>
           ${e.Note ? `<div class="live-note">${esc(e.Note)}</div>` : ''}
+          ${e.Esercizio === 'Prevenzione ruolo' ? prevenzioneCoachHtml(e, nSeduta) : ''}
           ${istruzioniHtml(e)}
           ${quickLogHtml(e, nSeduta)}
         </div>`).join('')}

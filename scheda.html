@@ -84,6 +84,9 @@ const IT = {
   prehabTitle:'Programma Prehab', prehabBtn:'Apri il programma personale',
   prehabFreq:'5× / sett.',
   serie:'Serie', intensity:'Intensità', rest:'Recupero', rec:'rec',
+  prevRuolo:'Ruolo', prevInd:'Individuale',
+  prevNoRuolo:'Ruolo non impostato per questa atleta.',
+  prevNoInd:'Programma individuale non disponibile.',
   retry:'↺ Riprova',
   queued:'In coda (offline) — si sincronizzerà',
   codaReport: n=>`In coda — si sincronizzeranno (${n})`,
@@ -116,6 +119,9 @@ const EN = {
   prehabTitle:'Prehab Program', prehabBtn:'Open personal program',
   prehabFreq:'5× / week',
   serie:'Sets', intensity:'Intensity', rest:'Rest', rec:'Rest',
+  prevRuolo:'Role', prevInd:'Individual',
+  prevNoRuolo:'No role set for this athlete.',
+  prevNoInd:'Individual program not available.',
   retry:'↺ Retry',
   queued:'Queued (offline) — will sync',
   codaReport: n=>`Queued — will sync (${n})`,
@@ -135,6 +141,7 @@ const METODO_EN = {
   'FM':                 'FM',
   'Weightlifting':      'Weightlifting',
   'Lanci (shot put)':   'Shot Put Throws',
+  'Prevenzione ruolo':  'Role Prevention',
 };
 function traduciMetodo(nome) {
   if (L !== EN) return nome;
@@ -340,6 +347,10 @@ function sanitizeVal(v) {
   return /^\d{4}-\d{2}-\d{2}T/.test(s) ? '' : s;
 }
 
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 function parseBlocchi(e) {
   const hasPipe = s => s && String(s).includes('|');
   const split   = s => s ? String(sanitizeVal(s)).split('|').map(v => v.trim()) : [];
@@ -402,6 +413,102 @@ function htmlEsercizio(e, logId) {
   }
   h += `</div>`;
   return h;
+}
+
+/* ---------- Prevenzione ruolo: scelta Ruolo / Individuale ---------- */
+const PREV_RUOLO_CHIAVE = {
+  Centrale: 'Centrali', Palleggiatrice: 'Palleggiatrici',
+  Schiacciatrice: 'Schiacciatrici/Opposti', Opposto: 'Schiacciatrici/Opposti',
+  Banda: 'Schiacciatrici/Opposti', Libero: 'Libero',
+};
+
+function prevSchedaPerSettimana(sett) {
+  return sett <= 2 ? '1' : (sett <= 5 ? '2' : '3');
+}
+
+function htmlPrevenzione(e, g, logId) {
+  const nome = (L === EN && e.Esercizio_EN) ? e.Esercizio_EN : e.Esercizio;
+  const sett = Number((String(e.N_Seduta).match(/^W(\d+)/) || [])[1] || 0);
+
+  /* menù per ruolo */
+  let menu = {};
+  try { menu = JSON.parse(e.Menu_Ruolo || '{}'); } catch (err) { menu = {}; }
+  const ruoloTesto = (g && g.Ruolo && menu[PREV_RUOLO_CHIAVE[g.Ruolo]]) ? menu[PREV_RUOLO_CHIAVE[g.Ruolo]] : '';
+
+  /* programma individuale (dalla parte 2 del programma di recupero) */
+  let ind = null;
+  if (g && g.Prevenzione_Ind) {
+    try {
+      const p = JSON.parse(g.Prevenzione_Ind);
+      const n = prevSchedaPerSettimana(sett);
+      if (p.schede && p.schede[n]) ind = p.schede[n];
+    } catch (err) { ind = null; }
+  }
+
+  const uid = String(logId).replace(/[^A-Za-z0-9-]/g, '_');
+  const def = ind ? 'ind' : 'ruolo';
+
+  let h = `<div class="esercizio">`;
+  h += `<div class="eserc-nome">${esc(nome)}</div>`;
+
+  /* mini tabella parametri (stesso layout degli altri esercizi) */
+  const ROWS = [
+    { label: L.serie,     val: e.Serie         },
+    { label: 'Reps',      val: e.Reps         },
+    { label: L.intensity, val: e['Intensità'] },
+    { label: L.rest,      val: e.Recupero     },
+  ].filter(r => r.val);
+  if (ROWS.length) {
+    h += `<div class="mini-tbl-wrap"><table class="mini-tbl"><tbody>`;
+    ROWS.forEach(r => { h += `<tr><td class="mini-tbl-label">${r.label}</td><td class="mini-tbl-val">${esc(r.val)}</td></tr>`; });
+    h += `</tbody></table></div>`;
+  }
+
+  /* toggle */
+  h += `<div class="prev-toggle" id="pt-${uid}">`;
+  h += `<button class="prev-btn${def === 'ruolo' ? ' active' : ''}" data-opt="ruolo" onclick="togglePrevenzione('${uid}','ruolo')">${L.prevRuolo}</button>`;
+  h += `<button class="prev-btn${def === 'ind' ? ' active' : ''}" data-opt="ind" onclick="togglePrevenzione('${uid}','ind')">${L.prevInd}</button>`;
+  h += `</div>`;
+
+  /* pannello ruolo */
+  h += `<div class="prev-panel" data-panel="ruolo"${def === 'ruolo' ? '' : ' style="display:none"'}>`;
+  h += ruoloTesto
+    ? `<div class="prev-ruolo-riga"><b>${esc(g.Ruolo)}</b> — ${esc(ruoloTesto)}</div>`
+    : `<div class="prev-vuoto">${L.prevNoRuolo}</div>`;
+  h += `</div>`;
+
+  /* pannello individuale */
+  h += `<div class="prev-panel" data-panel="ind"${def === 'ind' ? '' : ' style="display:none"'}>`;
+  if (ind && ind.esercizi && ind.esercizi.length) {
+    if (ind.titolo) h += `<div class="prev-titolo">${esc(ind.titolo)}</div>`;
+    if (ind.obiettivo) h += `<div class="prev-obiettivo">${esc(ind.obiettivo)}</div>`;
+    if (ind.durata) h += `<div class="prev-durata">${esc(ind.durata)}</div>`;
+    ind.esercizi.forEach(ex => {
+      const wk = ex.param && ex.param.weeks ? (ex.param.weeks[sett] || ex.param.weeks[String(sett)] || ex.param.extra || '') : (ex.param && ex.param.extra || '');
+      const meta = [wk, ex.param && ex.param.rpe && ex.param.rpe !== 'N/A' ? 'RPE ' + ex.param.rpe : '', ex.param && ex.param.tempo ? ex.param.tempo : ''].filter(Boolean);
+      h += `<div class="prev-es">`;
+      h += `<div class="prev-es-nome">${esc(ex.nome)}</div>`;
+      if (meta.length) h += `<div class="prev-es-meta">${meta.map(m => `<span class="prev-dose">${esc(m)}</span>`).join('')}</div>`;
+      if (ex.razionale) h += `<div class="prev-es-raz">${esc(ex.razionale)}</div>`;
+      if (ex.note) h += `<div class="prev-es-note">${esc(ex.note)}</div>`;
+      h += `</div>`;
+    });
+  } else {
+    h += `<div class="prev-vuoto">${L.prevNoInd}</div>`;
+  }
+  h += `</div>`;
+
+  h += `</div>`;
+  return h;
+}
+
+function togglePrevenzione(uid, opt) {
+  const wrap = document.getElementById('pt-' + uid);
+  if (!wrap) return;
+  const box = wrap.closest('.esercizio');
+  if (!box) return;
+  wrap.querySelectorAll('.prev-btn').forEach(b => b.classList.toggle('active', b.dataset.opt === opt));
+  box.querySelectorAll('.prev-panel').forEach(p => { p.style.display = (p.dataset.panel === opt) ? '' : 'none'; });
 }
 
 function htmlIndividuale(e, sedSuffix) {
@@ -605,7 +712,9 @@ async function caricaScheda() {
           if (m.desc) html += `<div class="metodo-desc">${traduciDescMetodo(m.desc)}</div>`;
           m.esercizi.forEach(e => {
             const logId = `log-${id}-${e.N_Seduta}-${e.Ord_Metodo}-${e.Ord_Eserc}`;
-            html += htmlEsercizio(e, logId);
+            html += (e.Esercizio === 'Prevenzione ruolo')
+              ? htmlPrevenzione(e, g, logId)
+              : htmlEsercizio(e, logId);
           });
         }
 

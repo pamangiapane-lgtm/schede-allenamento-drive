@@ -1,4 +1,4 @@
-/* ===== RESET & BASE ===== */
+﻿/* ===== RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
@@ -1164,3 +1164,32 @@ header p  { font-size: 0.82rem; opacity: 0.70; margin-top: 3px; }
 .feedback-row-note { flex-direction: column; align-items: stretch; gap: 6px; padding-top: 2px; }
 .seduta-note { width: 100%; border: 1px solid var(--bordo); border-radius: 8px; padding: 8px 10px; font-size: 0.85rem; font-family: inherit; color: var(--testo); background: #fff; resize: vertical; }
 .seduta-note:focus { outline: 2px solid var(--blu); outline-offset: 1px; }
+/* ---------- Prevenzione ruolo: toggle Ruolo / Individuale ---------- */
+.prev-toggle { display: flex; gap: 8px; margin: 10px 0 4px; }
+.prev-btn {
+  flex: 1; padding: 9px 12px; border: 1px solid var(--bordo); border-radius: 10px;
+  background: #fff; color: var(--blu); font-size: 0.95rem; font-weight: 700; cursor: pointer;
+}
+.prev-btn.active { background: var(--blu); color: #fff; border-color: var(--blu); }
+.prev-panel {
+  background: var(--blu-light); border-radius: 10px; padding: 10px 12px;
+  margin-top: 6px; font-size: 0.95rem;
+}
+.prev-titolo { font-weight: 700; color: var(--blu); margin-bottom: 2px; }
+.prev-obiettivo { color: var(--testo-sec); font-size: 0.9rem; margin-bottom: 4px; }
+.prev-durata { color: var(--testo-sec); font-size: 0.8rem; margin-bottom: 8px; }
+.prev-es { padding: 8px 0; }
+.prev-es + .prev-es { border-top: 1px solid var(--bordo); }
+.prev-es-nome { font-weight: 600; color: var(--testo); }
+.prev-es-meta { margin: 3px 0; }
+.prev-dose {
+  display: inline-block; background: #fff; border: 1px solid var(--bordo);
+  border-radius: 6px; padding: 1px 7px; font-size: 0.85rem; color: var(--blu);
+  margin: 0 4px 3px 0;
+}
+.prev-es-raz { color: var(--testo-sec); font-size: 0.85rem; margin-top: 2px; }
+.prev-es-note { color: var(--testo-sec); font-size: 0.85rem; font-style: italic; margin-top: 2px; }
+.prev-vuoto { color: var(--testo-sec); font-size: 0.9rem; }
+.prev-ruolo-riga { padding: 3px 0; }
+.prev-ruolo-riga b { color: var(--blu); }
+.prev-ruolo-riga.attiva { background: #fff; border-radius: 6px; padding: 3px 8px; }
