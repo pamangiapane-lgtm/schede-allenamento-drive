@@ -61,7 +61,7 @@ let feedbackLog = {};
 /* ---------- i18n ---------- */
 const IT = {
   loading:'Caricamento scheda...', back:'← Tutte le giocatrici',
-  tabProfile:'Profilo', tabSessions:'Sedute', weekAll:'Tutte', appTitle:'Schede Allenamento',
+  tabProfile:'Profilo', tabSessions:'Sedute', appTitle:'Schede Allenamento',
   notes:'Note', noteOpen:'Note ▾', noteClose:'Note ▸',
   instructions:'ℹ️ Istruzioni ▸', instrOpen:'ℹ️ Istruzioni ▾',
   howTo:'Come fare', feel:'Sensazione', avoid:'Evitare',
@@ -92,7 +92,7 @@ const IT = {
 };
 const EN = {
   loading:'Loading...', back:'← All athletes',
-  tabProfile:'Profile', tabSessions:'Sessions', weekAll:'All', appTitle:'Training Program',
+  tabProfile:'Profile', tabSessions:'Sessions', appTitle:'Training Program',
   notes:'Notes', noteOpen:'Notes ▾', noteClose:'Notes ▸',
   instructions:'ℹ️ Instructions ▸', instrOpen:'ℹ️ Instructions ▾',
   howTo:'How to', feel:'Feel', avoid:'Avoid',
@@ -528,15 +528,15 @@ async function caricaScheda() {
     const divSed = document.getElementById('sedute');
     let htmlSedute = '';
 
-    /* barra filtro per settimana (W1..W6) */
+    /* barra filtro per settimana (W1..W6): default = prima settimana, niente "Tutte" */
     const settimane = [...new Set(seduteGioc
       .map(s => { const m = String(s.Numero_Seduta).match(/^(W\d+)/); return m ? m[1] : ''; })
       .filter(Boolean))]
       .sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
+    const settDefault = settimane.length ? settimane[0] : '';
     if (settimane.length > 1) {
       htmlSedute += `<div class="filtro-settimane">` +
-        `<button class="sett-chip active" data-w="tutte" onclick="filtraSettimana('tutte', this)">${L.weekAll}</button>` +
-        settimane.map(w => `<button class="sett-chip" data-w="${w}" onclick="filtraSettimana('${w}', this)">${w}</button>`).join('') +
+        settimane.map(w => `<button class="sett-chip${w === settDefault ? ' active' : ''}" data-w="${w}" onclick="filtraSettimana('${w}', this)">${w}</button>`).join('') +
         `</div>`;
     }
 
@@ -557,8 +557,9 @@ async function caricaScheda() {
 
       const accId = `acc-${sed.Numero_Seduta}`;
       const sett  = (String(sed.Numero_Seduta).match(/^(W\d+)/) || [,''])[1];
+      const visIniziale = !(settimane.length > 1 && sett && sett !== settDefault);
       let html = `
-        <div class="seduta-accordion" id="${accId}" data-settimana="${sett}">
+        <div class="seduta-accordion" id="${accId}" data-settimana="${sett}"${visIniziale ? '' : ' style="display:none"'}>
           <button class="seduta-header" onclick="toggleSeduta('${accId}')">
             <h3>${traduciSeduta(sed.Nome_Seduta)}</h3>
             <span class="chevron">▾</span>
@@ -650,7 +651,7 @@ function filtraSettimana(w, btn) {
   document.querySelectorAll('.filtro-settimane .sett-chip').forEach(c => c.classList.remove('active'));
   btn.classList.add('active');
   document.querySelectorAll('.seduta-accordion').forEach(a => {
-    a.style.display = (w === 'tutte' || a.dataset.settimana === w) ? '' : 'none';
+    a.style.display = (!a.dataset.settimana || a.dataset.settimana === w) ? '' : 'none';
   });
 }
 
