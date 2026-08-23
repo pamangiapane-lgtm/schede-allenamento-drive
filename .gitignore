@@ -2,6 +2,7 @@
 Codice.PROD.gs
 tools/send_dati.js
 tools/build_dati_finali2.js
+tools/crea_link.js
 
 tools/_*.txt
 
