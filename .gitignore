@@ -1,6 +1,7 @@
 # Contiene i valori reali di TOKEN e COACH_KEY: NON committare mai.
 Codice.PROD.gs
 tools/send_dati.js
+tools/build_dati_finali2.js
 
 tools/_*.txt
 

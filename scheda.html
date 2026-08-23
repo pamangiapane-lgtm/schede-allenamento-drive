@@ -433,7 +433,8 @@ function htmlPrevenzione(e, g, logId) {
   /* menù per ruolo */
   let menu = {};
   try { menu = JSON.parse(e.Menu_Ruolo || '{}'); } catch (err) { menu = {}; }
-  const ruoloTesto = (g && g.Ruolo && menu[PREV_RUOLO_CHIAVE[g.Ruolo]]) ? menu[PREV_RUOLO_CHIAVE[g.Ruolo]] : '';
+  const chiave = (g && g.Ruolo) ? PREV_RUOLO_CHIAVE[g.Ruolo] : '';
+  const ruoloTesto = chiave && menu ? ((L === EN && menu[chiave + '_en']) ? menu[chiave + '_en'] : menu[chiave]) : '';
 
   /* programma individuale (dalla parte 2 del programma di recupero) */
   let ind = null;
@@ -686,9 +687,10 @@ async function caricaScheda() {
           html += `<div class="metodo-titolo">${traduciMetodo(m.nome)} <span class="prehab-freq-badge">${L.prehabFreq}</span></div>`;
           /* Obiettivo fase corrente */
           let obiettivoHtml = '';
-          if (g.Obiettivi_Prehab) {
+          const obvSrc = (L === EN && g.Obiettivi_Prehab_EN) ? g.Obiettivi_Prehab_EN : g.Obiettivi_Prehab;
+          if (obvSrc) {
             try {
-              const obv = JSON.parse(g.Obiettivi_Prehab);
+              const obv = JSON.parse(obvSrc);
               const fase = g.Fase_Prehab || 'F1';
               const testo = obv[fase] || '';
               if (testo) obiettivoHtml = `<div class="prehab-obiettivo">${testo}</div>`;
