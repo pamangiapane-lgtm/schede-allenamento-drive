@@ -1149,3 +1149,8 @@ header p  { font-size: 0.82rem; opacity: 0.70; margin-top: 3px; }
 .report-coda-label { color: #e8a000; }
 
 .storico-sed { font-weight: 400; font-size: 0.72rem; color: var(--testo-sec); }
+
+/* ===== FILTRO SETTIMANE ===== */
+.filtro-settimane { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 12px 0; }
+.sett-chip { background: #fff; border: 1px solid var(--bordo); color: var(--blu); border-radius: 999px; padding: 6px 14px; font-size: 0.8rem; font-weight: 700; cursor: pointer; }
+.sett-chip.active { background: var(--blu); color: #fff; border-color: var(--blu); }
