@@ -287,7 +287,7 @@ function renderOggi() {
     const r = byAtleta[String(a.ID)] || [];
     const rpe = r.filter(p => p.Esercizio === 'RPE-seduta').pop();
     const fat = r.filter(p => p.Esercizio === 'Fatica-seduta').pop();
-    const esercizi = r.filter(p => p.Esercizio !== 'RPE-seduta' && p.Esercizio !== 'Fatica-seduta');
+    const esercizi = r.filter(p => p.Esercizio !== 'RPE-seduta' && p.Esercizio !== 'Fatica-seduta' && p.Esercizio !== 'Nota-seduta');
     const ultimo = esercizi.length ? esercizi[esercizi.length - 1] : null;
     let ora = '';
     if (ultimo && ultimo.Timestamp) {

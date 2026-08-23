@@ -72,6 +72,7 @@ const IT = {
   loggedN: n=>`Compilati (${n})`, missedN: n=>`Non compilati (${n})`,
   rpeLabel:'Intensità seduta', rpeHint:'1 facile · 10 al limite',
   fatLabel:'Come ti senti', fatHint:'1 esausta · 5 perfetta',
+  noteLabel:'📝 Note (opzionale)', notePlaceholder:'Es. dolore al ginocchio sinistro, mal di testa...',
   last:'Ultima: ', instrSection:'Istruzioni',
   instrP1:'Inserisci il tuo <strong>peso corporeo</strong> qui sotto e tienilo aggiornato quando cambia — serve a calcolare i carichi per gli esercizi con sovraccarico.',
   instrP2:'Dopo ogni seduta <strong>aggiorna il massimale (1RM)</strong> nella sezione qui sotto in base a come hai sentito l\'esercizio. I carichi in scheda si calcolano da quel valore.',
@@ -103,6 +104,7 @@ const EN = {
   loggedN: n=>`Logged (${n})`, missedN: n=>`Not logged (${n})`,
   rpeLabel:'Session intensity', rpeHint:'1 easy · 10 max effort',
   fatLabel:'How do you feel', fatHint:'1 exhausted · 5 great',
+  noteLabel:'📝 Notes (optional)', notePlaceholder:'E.g. left knee pain, headache...',
   last:'Last: ', instrSection:'Instructions',
   instrP1:'Enter your <strong>body weight</strong> below and keep it updated whenever it changes — it\'s used to calculate loads for barbell exercises.',
   instrP2:'After each session, <strong>update your 1RM</strong> in the section below based on how the exercise felt. Your program loads are calculated from that value.',
@@ -466,6 +468,10 @@ async function caricaScheda() {
         if (p.Esercizio === 'RPE-seduta' || p.Esercizio === 'Fatica-seduta') {
           if (!feedbackLog[p.N_Seduta]) feedbackLog[p.N_Seduta] = {};
           feedbackLog[p.N_Seduta][p.Esercizio] = Number(p.Valore);
+        } else if (p.Esercizio === 'Nota-seduta') {
+          if (!feedbackLog[p.N_Seduta]) feedbackLog[p.N_Seduta] = {};
+          feedbackLog[p.N_Seduta]['Nota-seduta'] = String(p.Valore);
+          feedbackLog[p.N_Seduta]['Nota-seduta-ts'] = p.Data;
         } else if (p.Valore) {
           ultimiLog[p.Esercizio] = {
             valore: p.Valore,
@@ -809,6 +815,14 @@ async function fineSeduta(nSeduta, btn) {
     mancanti.push(L.fatLabel);
   }
 
+  /* Nota atleta (opzionale, come nell'app originale) */
+  const notaEl = document.getElementById(`nota-${id}-${nSeduta}`);
+  const nota   = notaEl ? notaEl.value.trim() : '';
+  if (nota) {
+    salvati.push({ label: L.noteLabel, detail: nota.length > 40 ? nota.slice(0, 40) + '…' : nota });
+    entries.push({ id_giocatrice: id, n_seduta: nSeduta, esercizio: 'Nota-seduta', data, valore: nota, note: '', kg_usati: '', reps_fatte: '', rm_stimato: '' });
+  }
+
   try {
     /* invio con coda offline: le righe che non partono restano in coda locale */
     const esiti = await Promise.all(entries.map(e => inviaLog(e)));
@@ -912,7 +926,7 @@ function buildProfilo(g, resE, resP, sedute) {
   const seduteMap = {};
   (sedute || []).forEach(s => { seduteMap[s.Numero_Seduta] = s.Nome_Seduta; });
 
-  const SKIP = new Set(['Peso-corporeo', 'RPE-seduta', 'Fatica-seduta']);
+  const SKIP = new Set(['Peso-corporeo', 'RPE-seduta', 'Fatica-seduta', 'Nota-seduta']);
 
   /* storico carichi: solo ULTIMO valore per esercizio */
   const ultimoLogPerEsercizio = {};
@@ -1051,6 +1065,15 @@ function htmlFeedbackSeduta(nSeduta, prev) {
   const prevRpe = prev['RPE-seduta']    || null;
   const prevFat = prev['Fatica-seduta'] || null;
 
+  /* nota atleta: precompilata solo se scritta oggi per questa seduta */
+  let notaVal = '';
+  const notaPrev = prev['Nota-seduta'] || '';
+  const notaTs   = prev['Nota-seduta-ts'] || '';
+  if (notaPrev && notaTs) {
+    const d = parseData(notaTs);
+    if (d && stessaData(d, new Date())) notaVal = notaPrev;
+  }
+
   let rpeBtn = '', fatBtn = '';
   for (let i = 1; i <= 10; i++) {
     const sel = i === prevRpe ? ' selected' : '';
@@ -1070,6 +1093,10 @@ function htmlFeedbackSeduta(nSeduta, prev) {
       <div class="feedback-row">
         <span class="feedback-label">${L.fatLabel} <span class="feedback-hint">${L.fatHint}</span></span>
         <div class="rating-group" id="${fatId}">${fatBtn}</div>
+      </div>
+      <div class="feedback-row feedback-row-note">
+        <span class="feedback-label">${L.noteLabel}</span>
+        <textarea class="seduta-note" id="nota-${id}-${nSeduta}" rows="2" placeholder="${L.notePlaceholder}">${notaVal}</textarea>
       </div>
     </div>`;
 }
